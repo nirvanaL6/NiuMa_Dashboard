@@ -1,0 +1,38 @@
+# ---- 依赖 ----
+node_modules/
+
+# ---- Cloudflare Wrangler 本地状态 ----
+server/.wrangler/
+
+# ---- 密钥 / 本地环境变量（永不提交）----
+.env
+.env.*
+!.env.example
+server/.dev.vars
+!server/.dev.vars.example
+
+# ---- 日志 ----
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-error.log*
+
+# ---- 导出备份 / 打包产物 ----
+*.zip
+workdesk-backup-*.json
+wd-backup.json
+
+# 测试脚本产生的临时截图（preview/ 下的正式截图需要保留）
+/tmp-*.png
+
+# ---- Python 缓存（浏览器回归测试用）----
+__pycache__/
+*.pyc
+.venv/
+
+# ---- 系统与编辑器 ----
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
