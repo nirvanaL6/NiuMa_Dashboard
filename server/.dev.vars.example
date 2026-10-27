@@ -1,0 +1,17 @@
+# 本地开发用的 Worker 变量（复制为 .dev.vars 后填写）
+#
+#   cp .dev.vars.example .dev.vars
+#
+# `.dev.vars` 已被 .gitignore 排除，不会进入仓库。
+# 生产环境请用 `npx wrangler secret put <NAME>` 写入，不要写进 wrangler.toml。
+
+# 验证码 / 会话令牌的哈希 pepper，建议 32 字节以上随机串
+#   生成方式：openssl rand -base64 32
+CODE_PEPPER=
+
+# Resend 发信通道（https://resend.com）
+# 不填则进入「开发模式」：验证码会在接口响应里回显并自动填入表单，仅供本地调试
+RESEND_API_KEY=
+
+# 发件人，需与 Resend 已验证的域名一致
+MAIL_FROM=WorkDesk <no-reply@your-domain.com>

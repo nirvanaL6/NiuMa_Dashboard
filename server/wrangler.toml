@@ -1,0 +1,20 @@
+name = "worker-desk-api"
+main = "src/index.js"
+compatibility_date = "2024-11-01"
+workers_dev = true
+
+# 前端与 API 同域部署时留空即可；分开部署时填前端域名（逗号分隔）
+[vars]
+ALLOWED_ORIGINS = "http://localhost:8765,http://127.0.0.1:8765"
+POW_DIFFICULTY = "16"
+DAILY_WRITES_LIMIT = "300"
+MAIL_FROM = "WorkDesk <no-reply@workdesk.local>"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "worker-desk"
+database_id = "local-dev-placeholder"
+
+# 生产请用 `wrangler secret put` 写入，不要提交到仓库：
+#   CODE_PEPPER     —— 验证码/会话哈希的密钥（32 字节随机串）
+#   RESEND_API_KEY  —— 发信通道；不配置则进入开发模式，验证码直接回显
