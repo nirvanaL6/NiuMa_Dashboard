@@ -18,7 +18,8 @@ ALLOWED_ORIGINS = "http://localhost:8765,http://127.0.0.1:8765"
 DEV_MODE = "false"
 POW_DIFFICULTY = "16"
 DAILY_WRITES_LIMIT = "300"
-MAIL_FROM = "WorkDesk <no-reply@workdesk.local>"
+# 必须使用 Resend 已验证域名下的地址，否则发送会被拒
+MAIL_FROM = "WorkDesk <no-reply@763988.xyz>"
 
 # D1 绑定。真实 id 属于账号资源标识，不进仓库：
 #   - 本地：写进 wrangler.local.toml（已 gitignore），由下面的 include 合并

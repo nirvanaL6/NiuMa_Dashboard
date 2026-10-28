@@ -129,9 +129,21 @@ CODE_PEPPER=$(openssl rand -base64 32) npm run dev -- --var DEV_MODE:false
 | secrets | `CODE_PEPPER`、`RESEND_API_KEY` 已写入 |
 | 健康检查 | `GET /api/health?db=1` → `{"ok":true,"db":"ok","users":N}` |
 
-**上线前必做**：Resend 账号需添加并验证发信域名，然后把 `wrangler.toml` 里的 `MAIL_FROM`
-改成该域名下的地址（例如 `WorkDesk <no-reply@yourdomain.com>`），否则 Resend 会拒发，
-注册会返回 503。当前 `MAIL_FROM` 仍是 `no-reply@workdesk.local` 占位值。
+发信通道已打通：Resend 域名 `763988.xyz` 已验证（东京区），`MAIL_FROM` 为
+`WorkDesk <no-reply@763988.xyz>`。Worker 侧实测 `devMode:false / delivered:true`，
+验证码邮件可达。**换域名时**要同步改 `wrangler.toml` 的 `MAIL_FROM` 并在 Resend 侧重新验证，
+否则发送会被拒（接口返回 503）。
+
+### 配置拆分：仓库里不放真实资源 id
+
+```
+wrangler.toml        # 提交，database_id 为占位符
+wrangler.local.toml  # 不提交，只存真实 database_id
+wrangler.build.toml  # 不提交，由上面两者生成，deploy 时用 -c 指定
+```
+
+wrangler **不会**自动合并 `*.local.toml`，所以需要 `pnpm config:build` 拼一份完整配置；
+`deploy` / `dev` / `migrate:*` 都已内置这一步，正常使用无需关心。
 
 ### 一条命令完成后续部署
 

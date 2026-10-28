@@ -40,3 +40,4 @@ server/public
 
 # 本地真实资源 id（D1 database_id 等）
 server/wrangler.local.toml
+server/wrangler.build.toml

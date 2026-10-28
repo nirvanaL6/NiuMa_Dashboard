@@ -1,16 +1,20 @@
 /**
- * 邮件发送：Cloudflare 上没有原生的邮件 API，走两种可插拔通道
- *   1) RESEND_API_KEY  —— 生产推荐（免费额度 100 封/天）
- *   2) 未配置时         —— 返回 devCode，仅用于本地联调，界面会显式提示「开发模式」
+ * 邮件发送：Cloudflare 上没有原生邮件 API，走 Resend（免费额度 100 封/天）。
+ *   - 配了 RESEND_API_KEY：真实发信；发件地址必须在 Resend 已验证域名下
+ *   - 未配：只在 DEV_MODE=true 时回传 devCode 供本地联调；生产由 api.js 直接拒绝（503），
+ *     不会出现「提示已发送但用户永远收不到」
  * 只发验证码，不泄露账号是否存在。
  */
 
-const FROM = 'WorkDesk <no-reply@workdesk.local>';
+// 兜底发件人，仅当 env.MAIL_FROM 未配置时使用；仍需是已验证域名下的地址
+const FROM = 'WorkDesk <no-reply@763988.xyz>';
 
 function codeMail(code, purpose) {
-  const title = purpose === 'reset' ? '重置登录密码' : '注册验证';
+  // 只放动作名，「验证码」由模板统一拼，避免出现「注册验证验证码」这种重复
+  const title = purpose === 'reset' ? '重置密码' : '注册';
   return {
-    subject: `【打工人工作台】${title}验证码 ${code}`,
+    // 验证码只进正文：主题行会出现在锁屏 / 通知栏预览里
+    subject: `【打工人工作台】${title}验证码`,
     text: `你的${title}验证码是 ${code}，10 分钟内有效。\n如果不是你本人操作，请忽略本邮件。`,
     html: `<div style="font-family:system-ui,-apple-system,'PingFang SC',sans-serif;padding:24px;background:#f6f8fc">
       <div style="max-width:480px;margin:0 auto;background:#fff;border-radius:16px;padding:28px">

@@ -149,7 +149,8 @@ if (resend) {
 // ---------- 5. 构建 + 部署 ----------
 log('构建静态产物并部署');
 execFileSync('node', [join(here, 'build-assets.mjs')], { cwd: root, stdio: 'inherit' });
-const out = wrangler(['deploy'], { quiet: true });
+execFileSync('node', [join(here, 'make-config.mjs')], { cwd: root, stdio: 'inherit' });
+const out = wrangler(['deploy', '-c', 'wrangler.build.toml'], { quiet: true });
 const url = out.match(/https:\/\/[^\s]+\.workers\.dev/)?.[0];
 console.log(out.split('\n').filter((l) => /Uploaded|Deployed|workers\.dev|Version ID/.test(l)).join('\n'));
 

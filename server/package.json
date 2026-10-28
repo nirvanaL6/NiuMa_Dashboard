@@ -4,13 +4,14 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "npm run build && wrangler dev --port 8787 --local",
+    "dev": "npm run build && npm run config:build && wrangler dev --port 8787 --local -c wrangler.build.toml",
     "build": "node scripts/build-assets.mjs",
     "preflight": "node scripts/preflight.mjs",
-    "deploy": "node scripts/preflight.mjs && npm run build && wrangler deploy",
-    "migrate:local": "wrangler d1 migrations apply worker-desk --local",
-    "migrate:remote": "wrangler d1 migrations apply worker-desk --remote",
-    "cloud:deploy": "node scripts/cloud-deploy.mjs"
+    "deploy": "node scripts/preflight.mjs && npm run build && npm run config:build && wrangler deploy -c wrangler.build.toml",
+    "migrate:local": "npm run config:build && wrangler d1 migrations apply worker-desk --local -c wrangler.build.toml",
+    "migrate:remote": "npm run config:build && wrangler d1 migrations apply worker-desk --remote -c wrangler.build.toml",
+    "cloud:deploy": "node scripts/cloud-deploy.mjs",
+    "config:build": "node scripts/make-config.mjs"
   },
   "devDependencies": {
     "wrangler": "^4"
