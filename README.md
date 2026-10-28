@@ -26,20 +26,20 @@ pnpm run dev            # http://127.0.0.1:8787
 
 ### 3. 部署到 Cloudflare
 
+前端与 API 打成**同一个 Worker**（同域，无需配 CORS、无需单独部署 Pages）：
+
 ```bash
 cd server
-npx wrangler d1 create worker-desk          # 记下返回的 database_id
-# 把 database_id 填进 wrangler.toml 的 [[d1_databases]]
-
+npx wrangler login
+npx wrangler d1 create worker-desk          # 记下 database_id，填进 wrangler.toml
 npx wrangler d1 migrations apply worker-desk --remote
-npx wrangler secret put CODE_PEPPER         # 验证码/令牌哈希的 pepper，随意长随机串
-npx wrangler secret put RESEND_API_KEY      # 可选；不配则走开发模式（验证码回显到页面）
+npx wrangler secret put CODE_PEPPER         # 必填，openssl rand -base64 32
+npx wrangler secret put RESEND_API_KEY      # 必填，否则注册返回 503
 
-# 改 wrangler.toml 的 ALLOWED_ORIGINS 为前端域名，然后发布
-npx wrangler deploy
+pnpm deploy                                 # 自检 → 构建静态产物 → 上传
 ```
 
-前端部署后需把 `src/api.js` 里的 `API_BASE` 推断结果指向 Worker 域名（或直接写死常量）。
+完整步骤、环境变量说明、部署后自检与常见问题见 **[server/DEPLOY.md](server/DEPLOY.md)**。
 
 ## 账号体系
 
@@ -97,7 +97,9 @@ worker-desk/
 ├─ server/
 │  ├─ src/           # index.js 路由 / api.js 业务 / crypto.js / mail.js / limits.js
 │  ├─ migrations/    # D1 建表与索引
+│  ├─ scripts/       # build-assets.mjs 同步前端产物 / preflight.mjs 部署自检
 │  ├─ test/          # Node 直连 Worker 的 E2E（26 项）
+│  ├─ DEPLOY.md      # 部署步骤与环境变量清单
 │  └─ wrangler.toml
 └─ preview/          # 各断点与深色模式的验证截图
 ```
@@ -177,7 +179,7 @@ Todo    { id, title, tags[], due, planAt, projectId, done, createdAt }
 2. 外卖券、资讯为本地示例数据，未接真实接口。
 3. 通知中心、导入日历、导出 CSV 为占位交互；待办已支持「项目&待办 / 四宫格 / 概览」三视图。
 4. 同平台浏览器字体：优先 Manrope（数字/西文），中文回落 Noto Sans CJK / 苹方；若要完全离线，需将 Manrope 字体文件下载到本地。
-5. 未配置 `RESEND_API_KEY` 时后端走**开发模式**，验证码会在响应里回显并自动填入表单——上线前必须配好发信通道。
+5. 验证码回显只在 `DEV_MODE=true` 时生效（仅本地 `.dev.vars`）。生产漏配 `RESEND_API_KEY` 会直接返回 503，不会假装发送成功。
 
 ## 测试
 
