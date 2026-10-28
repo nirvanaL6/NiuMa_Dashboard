@@ -117,3 +117,28 @@ CODE_PEPPER=$(openssl rand -base64 32) npm run dev -- --var DEV_MODE:false
 **数据库报 `no such table`** — 远端没跑迁移，`npx wrangler d1 migrations apply worker-desk --remote`。
 
 **改了本地 database_id 后本地库空了** — 本地 D1 按 id 分目录，id 变了等于新库，重新 `npm run migrate:local`。
+
+## 已部署实例（2026-10-28）
+
+| 项 | 值 |
+|---|---|
+| 访问地址 | https://worker-desk-api.hitecbasement8804.workers.dev |
+| Worker 名 | `worker-desk-api` |
+| D1 数据库 | 名称 `worker-desk`（真实 `database_id` 只存在本地 `wrangler.local.toml`，不入仓库） |
+| 表 / 索引 | 11 张表、15 个业务索引（全部查询字段已建索引） |
+| secrets | `CODE_PEPPER`、`RESEND_API_KEY` 已写入 |
+| 健康检查 | `GET /api/health?db=1` → `{"ok":true,"db":"ok","users":N}` |
+
+**上线前必做**：Resend 账号需添加并验证发信域名，然后把 `wrangler.toml` 里的 `MAIL_FROM`
+改成该域名下的地址（例如 `WorkDesk <no-reply@yourdomain.com>`），否则 Resend 会拒发，
+注册会返回 503。当前 `MAIL_FROM` 仍是 `no-reply@workdesk.local` 占位值。
+
+### 一条命令完成后续部署
+
+```bash
+cd server
+CLOUDFLARE_API_TOKEN=xxx CODE_PEPPER=xxx RESEND_API_KEY=re_xxx pnpm cloud:deploy
+```
+
+脚本会：解析 Account → 建库（已存在则复用）→ 写 `wrangler.local.toml` → 远端迁移 →
+写 secrets → 构建 → 上传 → 探活 `?db=1`。真实 id 不写入 `wrangler.toml`，仓库里始终是占位符。

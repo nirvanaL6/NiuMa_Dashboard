@@ -18,14 +18,26 @@ const oks = [];
 
 const toml = await readFile(tomlPath, 'utf8');
 
-/* ---- 1. D1 database_id 是否已替换 ---- */
-const dbId = toml.match(/database_id\s*=\s*"([^"]*)"/)?.[1] || '';
+/* ---- 1. D1 database_id 是否已配置（真实 id 放在 gitignore 的 wrangler.local.toml） ---- */
+const localPath = join(here, '..', 'wrangler.local.toml');
+let localToml = '';
+try {
+  localToml = await readFile(localPath, 'utf8');
+} catch {
+  /* 文件不存在 */
+}
+const dbId = localToml.match(/database_id\s*=\s*"([^"]*)"/)?.[1] || '';
+const mainDbId = toml.match(/database_id\s*=\s*"([^"]*)"/)?.[1] || '';
 if (!dbId || /REPLACE|placeholder|local-dev/i.test(dbId)) {
   problems.push(
-    'D1 的 database_id 仍是占位值。执行 `npx wrangler d1 create worker-desk` 拿到真实 id 填进 wrangler.toml',
+    'D1 的 database_id 未配置。用 `pnpm cloud:deploy` 一条命令自动建库并写进 wrangler.local.toml，' +
+      '或手动执行 `npx wrangler d1 create worker-desk` 后把 id 写进 wrangler.local.toml',
   );
 } else {
-  oks.push(`D1 database_id 已配置（${dbId.slice(0, 8)}…）`);
+  oks.push(`D1 database_id 已配置（${dbId.slice(0, 8)}…，来自 wrangler.local.toml）`);
+}
+if (!/REPLACE|placeholder/i.test(mainDbId)) {
+  warns.push('wrangler.toml 里写的是真实 database_id，容易随仓库一起公开；建议改回占位符');
 }
 
 /* ---- 2. DEV_MODE 必须是 false ---- */

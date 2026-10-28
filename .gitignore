@@ -37,3 +37,6 @@ Thumbs.db
 .vscode/
 *.swp
 server/public
+
+# 本地真实资源 id（D1 database_id 等）
+server/wrangler.local.toml

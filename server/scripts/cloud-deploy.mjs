@@ -90,15 +90,30 @@ if (!db) {
   ok(`已存在 ${DB_NAME} → ${db.uuid}`);
 }
 
-const tomlPath = join(root, 'wrangler.toml');
-let toml = await readFile(tomlPath, 'utf8');
-const cur = toml.match(/database_id\s*=\s*"([^"]*)"/)?.[1];
+// 真实 id 写进 wrangler.local.toml（gitignore），仓库里的 wrangler.toml 只留占位符
+const localPath = join(root, 'wrangler.local.toml');
+const localToml = `# 本地/部署机的真实资源 id（由 scripts/cloud-deploy.mjs 生成，已 gitignore）
+[[d1_databases]]
+binding = "DB"
+database_name = "${DB_NAME}"
+database_id = "${db.uuid}"
+`;
+let cur = '';
+try {
+  cur = (await readFile(localPath, 'utf8')).match(/database_id\s*=\s*"([^"]*)"/)?.[1] || '';
+} catch {
+  /* 首次部署时文件不存在 */
+}
 if (cur !== db.uuid) {
-  toml = toml.replace(/database_id\s*=\s*"[^"]*"/, `database_id = "${db.uuid}"`);
-  await writeFile(tomlPath, toml);
-  ok(`wrangler.toml 的 database_id 已写为真实值`);
+  await writeFile(localPath, localToml);
+  ok('wrangler.local.toml 的 database_id 已写入真实值');
 } else {
-  ok('wrangler.toml 的 database_id 已是最新');
+  ok('wrangler.local.toml 的 database_id 已是最新');
+}
+// 兜底：如果 wrangler.toml 里被手改成了真实 id，提醒改回占位符，避免误提交
+const mainToml = await readFile(join(root, 'wrangler.toml'), 'utf8');
+if (!/database_id\s*=\s*"REPLACE_WITH_YOUR_D1_DATABASE_ID"/.test(mainToml)) {
+  warn('wrangler.toml 里的 database_id 不是占位符，注意别把真实 id 提交上去');
 }
 
 // ---------- 3. 迁移 ----------

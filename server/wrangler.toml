@@ -20,10 +20,13 @@ POW_DIFFICULTY = "16"
 DAILY_WRITES_LIMIT = "300"
 MAIL_FROM = "WorkDesk <no-reply@workdesk.local>"
 
+# D1 绑定。真实 id 属于账号资源标识，不进仓库：
+#   - 本地：写进 wrangler.local.toml（已 gitignore），由下面的 include 合并
+#   - 线上：CI / 部署机同样用 wrangler.local.toml，或直接改本文件（不提交）
+#   - 一条命令搞定：pnpm cloud:deploy（会自动建库并把 id 写入 wrangler.local.toml）
 [[d1_databases]]
 binding = "DB"
 database_name = "worker-desk"
-# 换成 `wrangler d1 create worker-desk` 返回的真实 id
 database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
 
 # 生产请用 `wrangler secret put` 写入，不要提交到仓库：
