@@ -3,8 +3,11 @@
  * 约定：模板只负责结构，交互由 app.js 事件委托处理（data-action）
  */
 import { icon } from './icons.js';
+import { MODULES } from './config.js';
 import { SCHEDULE, WEEK, NEWS, COUPONS, PRICE_COMPARE } from './data.js';
 import { getData } from './store.js';
+import { viewTodoList, viewTodoQuadrant, viewTodoOverview } from './todo-views.js';
+import { QUADRANTS, quadOf, fmtDue } from './todo-model.js';
 
 const money = (n, digits = 2) =>
   n.toLocaleString('zh-CN', { minimumFractionDigits: digits, maximumFractionDigits: digits });
@@ -24,18 +27,33 @@ function spark(points, color = 'var(--primary)') {
   </svg>`;
 }
 
-function todoItem(t) {
+/* 总览里的迷你待办条目：只读展示，数据取自待办模块的新模型 */
+function miniTodoItem(t) {
+  const q = QUADRANTS.find((x) => x.id === quadOf(t.tags));
+  const p = (getData().projects || []).find((x) => x.id === t.projectId);
   return `<li class="todo ${t.done ? 'done' : ''}" data-id="${t.id}" tabindex="0" role="checkbox" aria-checked="${t.done}" aria-label="${t.title}">
     <span class="check" aria-hidden="true">${icon('check', 12, 2.4)}</span>
     <span class="txt">
       <span class="t">${t.title}</span>
       <span class="m">
-        <span class="prio prio--${t.prio}"><i></i>${t.prio === 'p0' ? 'P0 紧急' : t.prio === 'p1' ? 'P1 重要' : 'P2 普通'}</span>
-        <span class="dot-line"></span><span>${t.meta}</span>
-        <span class="dot-line"></span><span>${t.due}</span>
+        ${q ? `<span class="prio" style="--c:${q.accent}"><i style="background:${q.accent}"></i>${q.label}</span>` : ''}
+        ${p ? `<span class="dot-line"></span><span>${p.title}</span>` : ''}
+        ${t.due ? `<span class="dot-line"></span><span>${fmtDue(t.due)}</span>` : ''}
       </span>
     </span>
   </li>`;
+}
+
+/* =========================================================
+   施工中（未开发模块的占位）
+   ========================================================= */
+function viewWip(title) {
+  return `<div class="wip">
+    <div class="wip__icon">${icon('settings', 30, 1.4)}</div>
+    <h3>施工中</h3>
+    <p><b>${title}</b> 正在开发，敬请期待</p>
+    <span class="wip__tag">当前可用：待办</span>
+  </div>`;
 }
 
 function stateBlock({ kind = 'empty', title, desc, action = '' }) {
@@ -53,7 +71,7 @@ function viewOverview() {
   const total = todos().length, done = todos().filter((t) => t.done).length;
   const pct = Math.round((done / total) * 100);
   const r = 56, c = 2 * Math.PI * r;
-  const openP0 = todos().filter((t) => !t.done && t.prio === 'p0').length;
+  const openP0 = todos().filter((t) => !t.done && (t.tags || []).includes('q1')).length;
 
   return `
   <div class="hero">
@@ -107,7 +125,7 @@ function viewOverview() {
       <div class="card">
         <div class="card-head"><h3 class="card-title">今日待办</h3><a href="#" class="card-sub" data-jump="todo">全部 ${todos().filter((t) => !t.done).length} 件</a></div>
         <div class="todo-list" id="todoMini">
-          ${todos().filter((t) => !t.done).slice(0, 3).map(todoItem).join('')}
+          ${todos().filter((t) => !t.done).slice(0, 3).map(miniTodoItem).join('')}
         </div>
       </div>
     </div>
@@ -167,78 +185,6 @@ function viewProgress() {
         <li>周五专注时长下降 22%，属正常回落<span class="when">正常</span></li>
       </div>
     </div>
-  </div>`;
-}
-
-/* =========================================================
-   待办
-   ========================================================= */
-function viewTodoMine() {
-  const open = todos().filter((t) => !t.done), done = todos().filter((t) => t.done);
-  return `
-    <div class="view-actions">
-      <button class="btn btn--ghost btn--sm">${icon('filter', 14)} 筛选</button>
-      <button class="btn btn--primary btn--sm" data-action="new-task">${icon('plus', 14, 2)} 新建</button>
-    </div>
-
-  <div class="grid grid--12">
-    <div class="col-8 card">
-      <div class="card-head"><h3 class="card-title">未完成</h3><span class="card-sub">按优先级排序</span></div>
-      <ul class="todo-list" id="todoList">${open.map(todoItem).join('')}</ul>
-      <div class="card-head" style="margin:18px 0 8px"><h3 class="card-title" style="font-size:13px;color:var(--ink-3)">已完成</h3></div>
-      <ul class="todo-list">${done.map(todoItem).join('')}</ul>
-    </div>
-    <div class="col-4" style="display:flex;flex-direction:column;gap:14px">
-      <div class="card">
-        <div class="card-head"><h3 class="card-title">紧急 × 重要</h3></div>
-        <div class="quad">
-          <div class="quad__cell" data-q="1"><div style="display:flex;justify-content:space-between"><h4>马上做</h4><span class="n">2</span></div><li>需求评审材料</li><li>视觉对齐</li></div>
-          <div class="quad__cell" data-q="2"><div style="display:flex;justify-content:space-between"><h4>计划做</h4><span class="n">2</span></div><li>周报</li><li>迭代排期</li></div>
-          <div class="quad__cell" data-q="3"><div style="display:flex;justify-content:space-between"><h4>委托做</h4><span class="n">1</span></div><li>回复甲方邮件</li></div>
-          <div class="quad__cell" data-q="4"><div style="display:flex;justify-content:space-between"><h4>抽空做</h4><span class="n">1</span></div><li>报销发票</li></div>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-head"><h3 class="card-title">今日完成度</h3><span class="chip chip--primary" id="doneRatio">25%</span></div>
-        <div class="meter" style="height:9px"><i id="doneMeter" style="--v:25%"></i></div>
-        <p class="card-sub" style="margin-top:10px">勾选左侧条目，进度会实时更新</p>
-      </div>
-    </div>
-  </div>`;
-}
-
-function viewTodoQuadrant() {
-  const g = (u, i) => todos().filter((t) => t.urgent === u && t.important === i);
-  const cells = [
-    { q: 1, title: '紧急且重要 · 马上做', rows: g(true, true) },
-    { q: 2, title: '重要不紧急 · 计划做', rows: g(false, true) },
-    { q: 3, title: '紧急不重要 · 委托做', rows: g(true, false) },
-    { q: 4, title: '不紧急不重要 · 抽空做', rows: g(false, false) },
-  ];
-  return `
-  <div class="grid" style="grid-template-columns:1fr 1fr">
-    ${cells.map((c) => `<div class="card">
-      <div class="card-head"><h3 class="card-title" style="font-size:13px">${c.title}</h3><span class="chip">${c.rows.filter((r) => !r.done).length} 件</span></div>
-      <ul class="todo-list">${c.rows.length ? c.rows.map(todoItem).join('') : stateBlock({ title: '这里空着', desc: '很好，这一格没有积压的事' })}</ul>
-    </div>`).join('')}
-  </div>`;
-}
-
-function viewTodoWeekly() {
-  const days = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-  return `
-    <div class="view-actions">
-      <button class="btn btn--ghost btn--sm">${icon('chevronRight', 14)} 下周</button>
-    </div>
-  <div class="grid" style="grid-template-columns:repeat(7,minmax(0,1fr));gap:10px;align-items:start">
-    ${days.map((d, i) => `<div class="card card--auto" style="padding:12px;min-height:150px;${i === 0 ? 'box-shadow:var(--sh-md)' : ''}">
-      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px">
-        <b style="font-size:12.5px;${i === 0 ? 'color:var(--primary-deep)' : ''}">${d}</b>
-        <span style="font-size:11px;color:var(--ink-3);font-variant-numeric:tabular-nums">${26 + i}</span>
-      </div>
-      ${(i === 0 ? todos().slice(0, 4) : []).map((t) => `<div style="font-size:11.5px;padding:7px 8px;border-radius:9px;background:var(--surface-raised);box-shadow:var(--sh-xs);margin-bottom:6px;line-height:1.35">${t.title}</div>`).join('')}
-      ${i === 0 ? '' : `<div style="font-size:11px;color:var(--ink-4);text-align:center;padding:14px 0">空闲</div>`}
-    </div>`).join('')}
   </div>`;
 }
 
@@ -586,9 +532,9 @@ function viewReportSpend() {
 const VIEWS = {
   'overview:today': viewOverview,
   'overview:progress': viewProgress,
-  'todo:mine': viewTodoMine,
+  'todo:list': viewTodoList,
   'todo:quadrant': viewTodoQuadrant,
-  'todo:weekly': viewTodoWeekly,
+  'todo:overview': viewTodoOverview,
   'news:feed': viewNewsFeed,
   'news:topics': viewNewsTopics,
   'news:saved': viewNewsSaved,
@@ -614,6 +560,9 @@ const coupons = () => {
 };
 
 export function renderView(moduleId, viewId) {
+  const mod = MODULES.find((m) => m.id === moduleId);
+  // 未开发模块统一显示「施工中」，避免旧演示视图的数据结构拖累主线开发
+  if (!mod?.ready) return viewWip(mod?.title || mod?.label || '该模块');
   const fn = VIEWS[`${moduleId}:${viewId}`];
   if (!fn) return stateBlock({ kind: 'error', title: '视图加载失败', desc: '找不到这个视图的模板，请检查模块配置' });
   return fn();
