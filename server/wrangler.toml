@@ -21,6 +21,12 @@ DAILY_WRITES_LIMIT = "300"
 # 必须使用 Resend 已验证域名下的地址，否则发送会被拒
 MAIL_FROM = "WorkDesk <no-reply@763988.xyz>"
 
+# 自定义域名：工作区里 workers.dev 被 SNI 阻断，用已托管在 Cloudflare 的域名访问。
+# 首次绑定：npx wrangler deploy 时会自动创建 DNS 记录与证书（需 DNS:Edit 权限）
+[[routes]]
+pattern = "desk.763988.xyz"
+custom_domain = true
+
 # D1 绑定。真实 id 属于账号资源标识，不进仓库：
 #   - 本地：写进 wrangler.local.toml（已 gitignore），由下面的 include 合并
 #   - 线上：CI / 部署机同样用 wrangler.local.toml，或直接改本文件（不提交）

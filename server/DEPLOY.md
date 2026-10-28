@@ -122,7 +122,8 @@ CODE_PEPPER=$(openssl rand -base64 32) npm run dev -- --var DEV_MODE:false
 
 | 项 | 值 |
 |---|---|
-| 访问地址 | https://worker-desk-api.hitecbasement8804.workers.dev |
+| **访问地址（推荐）** | **https://desk.763988.xyz** |
+| workers.dev 地址 | https://worker-desk-api.hitecbasement8804.workers.dev（部分地区被 SNI 阻断，仅作备用） |
 | Worker 名 | `worker-desk-api` |
 | D1 数据库 | 名称 `worker-desk`（真实 `database_id` 只存在本地 `wrangler.local.toml`，不入仓库） |
 | 表 / 索引 | 11 张表、15 个业务索引（全部查询字段已建索引） |
@@ -154,3 +155,26 @@ CLOUDFLARE_API_TOKEN=xxx CODE_PEPPER=xxx RESEND_API_KEY=re_xxx pnpm cloud:deploy
 
 脚本会：解析 Account → 建库（已存在则复用）→ 写 `wrangler.local.toml` → 远端迁移 →
 写 secrets → 构建 → 上传 → 探活 `?db=1`。真实 id 不写入 `wrangler.toml`，仓库里始终是占位符。
+
+### 为什么必须有自定义域名
+
+`*.workers.dev` 在部分网络（含国内多数线路）会被 SNI 阻断：TCP 能连上，TLS Client Hello 一发出
+就被 RST，表现为浏览器「无法访问此网站」。实测同一 IP `104.16.0.1` 上
+`workers.cloudflare.com` 握手正常、`*.workers.dev` 被 reset，属域名级封锁，与部署无关。
+
+解决办法是把 Worker 绑到已在 Cloudflare 托管的域名上（`[[routes]]` + `custom_domain = true`），
+Cloudflare 会自动创建 DNS 记录与边缘证书，无需手配 CNAME。
+
+```toml
+[[routes]]
+pattern = "desk.763988.xyz"
+custom_domain = true
+```
+
+也可用 API 单独绑定（不需要 DNS:Edit 权限）：
+
+```bash
+curl -X PUT -H "Authorization: Bearer $TOKEN" -H "content-type: application/json" \
+  "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT/workers/domains" \
+  -d '{"environment":"production","hostname":"desk.763988.xyz","service":"worker-desk-api","zone_id":"<zone_id>"}'
+```

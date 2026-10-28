@@ -40,6 +40,14 @@ if (!/REPLACE|placeholder/i.test(mainDbId)) {
   warns.push('wrangler.toml 里写的是真实 database_id，容易随仓库一起公开；建议改回占位符');
 }
 
+/* ---- 1.5 自定义域名（workers.dev 在部分网络被 SNI 阻断，须配自有域名） ---- */
+const customDomain = toml.match(/pattern\s*=\s*"([^"]+)"\s*\ncustom_domain\s*=\s*true/)?.[1];
+if (!customDomain) {
+  warns.push('未配置 [[routes]] 自定义域名。workers.dev 在部分网络（含国内）被 SNI 阻断，建议绑自有域名');
+} else {
+  oks.push(`自定义域名 ${customDomain}`);
+}
+
 /* ---- 2. DEV_MODE 必须是 false ---- */
 const devMode = toml.match(/DEV_MODE\s*=\s*"([^"]*)"/)?.[1];
 if (devMode !== 'false') {
