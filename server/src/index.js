@@ -51,6 +51,15 @@ export default {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers });
 
     if (url.pathname === '/api/health') {
+      // ?db=1 时顺带探一次 D1，部署后用它确认绑定与迁移都到位（仅一次轻量读）
+      if (url.searchParams.get('db') === '1') {
+        try {
+          const row = await env.DB.prepare('SELECT COUNT(*) AS n FROM users').first();
+          return json({ ok: true, ts: Date.now(), db: 'ok', users: row?.n ?? 0 }, 200, headers);
+        } catch (err) {
+          return json({ ok: false, ts: Date.now(), db: 'error', message: String(err.message || err) }, 503, headers);
+        }
+      }
       return json({ ok: true, ts: Date.now() }, 200, headers);
     }
 
