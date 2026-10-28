@@ -8,6 +8,7 @@
 export const MODULES = [
   {
     id: 'overview',
+    wip: true,
     label: '总览',
     icon: 'overview',
     kicker: 'Overview',
@@ -23,16 +24,18 @@ export const MODULES = [
     label: '待办',
     icon: 'todo',
     kicker: 'Tasks',
-    title: '待办中心',
-    desc: '把脑子里的琐事先卸下来',
+    title: '待办',
+    desc: '项目与待办、四宫格、概览，一套流程管到底',
+    ready: true, // 已开发完成，其余模块显示「施工中」
     views: [
-      { id: 'mine', label: '我的待办', icon: 'inbox', hint: '今天要交付的全部任务' },
-      { id: 'quadrant', label: '四象限', icon: 'target', hint: '按紧急 / 重要矩阵重新排优先级' },
-      { id: 'weekly', label: '周计划', icon: 'calendar', hint: '周一到周日的时间块' },
+      { id: 'list', label: '项目&待办', icon: 'inbox', hint: '新建项目或单个待办，项目下可挂多条待办' },
+      { id: 'quadrant', label: '四宫格', icon: 'target', hint: '按紧急性与重要性分格，拖进去即自动打标' },
+      { id: 'overview', label: '概览', icon: 'calendar', hint: '日 / 周 / 月视图，拖到某日即自动排期' },
     ],
   },
   {
     id: 'news',
+    wip: true,
     label: '资讯',
     icon: 'news',
     kicker: 'Briefing',
@@ -46,6 +49,7 @@ export const MODULES = [
   },
   {
     id: 'food',
+    wip: true,
     label: '外卖',
     icon: 'food',
     kicker: 'Deals',
@@ -59,6 +63,7 @@ export const MODULES = [
   },
   {
     id: 'salary',
+    wip: true,
     label: '计薪',
     icon: 'salary',
     kicker: 'Salary',
@@ -72,6 +77,7 @@ export const MODULES = [
   },
   {
     id: 'report',
+    wip: true,
     label: '报表',
     icon: 'report',
     kicker: 'Insights',
