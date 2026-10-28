@@ -11,6 +11,7 @@ import { seedData } from './data.js';
 import * as store from './store.js';
 import { authApi, stateApi, getToken, setToken, ApiError } from './api.js';
 import { mountAuth, refreshAccountUI, openAuth, closeAuth, currentUser as authUser, bootstrapSession, logout, setUser } from './auth.js';
+import { mountTodo, bindTodoEvents } from './todo-app.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -190,15 +191,9 @@ subNav.addEventListener('click', (e) => {
 
 /* 视图内的快捷跳转（data-jump="todo" / data-shortcut） */
 document.addEventListener('click', (e) => {
-  // 视图内的「新建待办」按钮：显式交给 addTask，避免与侧栏快捷入口混淆
+  // 视图内的「新建待办」按钮：统一走待办编辑器
   if (e.target.closest('[data-action="new-task"]')) {
-    // 不在「我的待办」时先切过去，再展开输入条
-    if (state.moduleId !== 'todo' || state.viewId !== 'mine') {
-      go('todo', 'mine');
-      setTimeout(() => addTask(false), 360);
-    } else {
-      addTask(false);
-    }
+    newTodo('todo');
     return;
   }
   if (e.target.closest('[data-action="focus"]')) { toast(`${icon('target')} 已进入专注模式 · 25 分钟`); return; }
@@ -212,7 +207,7 @@ document.addEventListener('click', (e) => {
   }
   const sc = e.target.closest('[data-shortcut]');
   if (sc) {
-    if (sc.dataset.shortcut === 'new-task') addTask(true);
+    if (sc.dataset.shortcut === 'new-task') newTodo('todo');
     if (sc.dataset.shortcut === 'focus') toast(`${icon('target')} 已进入专注模式 · 25 分钟`);
   }
 });
@@ -227,105 +222,43 @@ function onViewMounted(root) {
   if (root.dataset.viewKey === 'salary:live') {
     startSalaryClock(root, 'full');
   }
-  if (root.dataset.viewKey === 'todo:mine') {
-    syncTodoMeter(root);
-  }
 }
 
 /* ---------------- 待办交互 ---------------- */
-// 只处理第 1 列「复选框」视图里的待办：.todo/.check 是通用类名，
-// 不加限定会把其他视图里同名类的点击误判为勾选待办
-const todoIn = (el) => {
-  const item = el?.closest('.todo');
-  return item && item.closest('#todoList') ? item : null;
-};
-
-document.addEventListener('click', (e) => {
-  const item = todoIn(e.target) || todoIn(e.target.closest('.check')?.parentElement);
-  if (!item) return;
-  e.preventDefault();
-  toggleTodo(item);
-});
-
-document.addEventListener('keydown', (e) => {
-  if ((e.key === 'Enter' || e.key === ' ') && todoIn(e.target)) {
-    e.preventDefault();
-    toggleTodo(todoIn(e.target));
+/**
+ * 待办模块的交互（编辑器 / 拖拽 / 缩放）全部由 todo-app.js 接管。
+ * 这里只保留两件事：给侧栏与视图内的「新建待办」快捷键找到统一入口，
+ * 以及维护侧栏待办角标。
+ */
+function newTodo(kind = 'todo') {
+  if (state.moduleId !== 'todo' || state.viewId !== 'list') {
+    go('todo', 'list');
+    setTimeout(() => openTodoEditor(kind), 320);
+  } else {
+    openTodoEditor(kind);
   }
-});
-
-function toggleTodo(el) {
-  if (!el || !el.isConnected) return;
-  const on = el.getAttribute('aria-checked') !== 'true';
-  el.setAttribute('aria-checked', String(on));
-  el.classList.toggle('done', on);
-  syncTodoMeter(el.closest('.view'));
-  const id = el.dataset.id;
-  if (id) {
-    // 写库：免登录只落本地，登录模式排队同步（store 内部 5s 防抖）
-    const todos = (store.getData().todos || []).map((t) => (t.id === id ? { ...t, done: on } : t));
-    store.saveData({ todos }, { silent: true });
-  }
-  toast(on ? `${icon('check')} 已完成一件，继续保持` : `${icon('refresh')} 已移回未完成`);
 }
 
-function syncTodoMeter(root) {
-  if (!root) return;
-  const all = $$('.todo[role="checkbox"]', root);
-  const done = all.filter((x) => x.getAttribute('aria-checked') === 'true').length;
-  const pct = all.length ? Math.round((done / all.length) * 100) : 0;
-  const meter = $('#doneMeter', root);
-  const chip = $('#doneRatio', root);
-  if (meter) meter.style.setProperty('--v', `${pct}%`);
-  if (chip) chip.textContent = `${pct}%`;
+let openTodoEditor = () => {};
+/** 由启动段注入（todo-app 的 openEditor），避免模块间循环依赖 */
+export function provideTodoEditor(fn) { openTodoEditor = fn; }
+
+/** 侧栏一级导航的未完成角标 */
+function refreshTodoBadge() {
+  const btn = railNav.querySelector('[data-module="todo"]');
+  if (!btn) return;
+  const list = store.getData().todos || [];
+  const open = list.filter((t) => !t.done).length;
+  let dot = btn.querySelector('.rail__badge');
+  if (!open) { dot?.remove(); return; }
+  if (!dot) {
+    dot = document.createElement('span');
+    dot.className = 'rail__badge';
+    btn.appendChild(dot);
+  }
+  dot.textContent = String(open);
 }
 
-/** 轻量输入弹层：浏览器原生 prompt 无法参与设计系统，这里用内联表单 */
-function addTask(fromSidebar = false) {
-  if ($('#quickAdd')) { $('#quickAddInput').focus(); return; }
-  if (fromSidebar && (state.moduleId !== 'todo' || state.viewId !== 'mine')) {
-    // 侧栏快捷入口：先落到「我的待办」再展开输入条
-    go('todo', 'mine');
-    requestAnimationFrame(() => addTask(false));
-    return;
-  }
-  const host = $('.view', stage);
-  if (!host) { toast(`${icon('bolt')} 当前视图不支持快捷新建，请先切换到「我的待办」`); return; }
-  const bar = document.createElement('form');
-  bar.id = 'quickAdd';
-  bar.style.cssText = 'display:flex;gap:8px;align-items:center;padding:10px 12px;border-radius:16px;background:var(--surface);box-shadow:var(--sh-sm)';
-  bar.innerHTML = `<span style="color:var(--primary)">${icon('plus', 16, 2)}</span>
-    <label class="sr-only" for="quickAddInput">新待办内容</label>
-    <input id="quickAddInput" name="title" placeholder="一句话描述要做什么，回车添加" autocomplete="off"
-      style="flex:1;height:34px;border:0;outline:none;background:none;font-size:13.5px;font-weight:600" />
-    <button class="btn btn--ghost btn--sm" type="button" data-cancel>取消</button>
-    <button class="btn btn--primary btn--sm" type="submit">添加</button>`;
-  host.prepend(bar);
-  const input = $('#quickAddInput', bar);
-  input.focus();
-  bar.addEventListener('submit', (ev) => {
-    ev.preventDefault();
-    const title = input.value.trim();
-    if (!title) { input.focus(); return; }
-    const list = $('#todoList', host);
-    const li = document.createElement('li');
-    li.className = 'todo todo-item';
-    li.tabIndex = 0;
-    li.setAttribute('role', 'checkbox');
-    li.setAttribute('aria-checked', 'false');
-    li.innerHTML = `<span class="check">${icon('check', 12, 2.4)}</span>
-      <span class="txt"><span class="t"></span><span class="m"><span class="prio prio--p2"><i></i>P2 普通</span><span class="dot-line"></span><span>刚刚添加</span></span></span>`;
-    li.querySelector('.t').textContent = title;
-    li.dataset.id = 'u' + Date.now();
-    list?.prepend(li);
-    const todos = [{ id: li.dataset.id, title, meta: '自建 · 手动添加', due: '今天', prio: 'p2', urgent: false, important: false, done: false }, ...(store.getData().todos || [])];
-    store.saveData({ todos }, { silent: true });
-    syncTodoMeter(host);
-    bar.remove();
-    toast(`${icon('check')} 已加入待办：${title.slice(0, 12)}`);
-  });
-  bar.querySelector('[data-cancel]').addEventListener('click', () => bar.remove());
-}
 
 /* ---------------- 通用开关 / 领券 / 收藏 ---------------- */
 document.addEventListener('click', (e) => {
@@ -882,6 +815,21 @@ renderRail();
 renderPanel();
 renderStage('forward', false);
 mountAuth(document.body);
+
+/* ---- 待办模块：编辑器宿主 + 交互委托 ---- */
+let todoEditor = document.getElementById('todoEditor');
+if (!todoEditor) {
+  todoEditor = document.createElement('div');
+  todoEditor.id = 'todoEditor';
+  document.body.appendChild(todoEditor);
+}
+mountTodo(todoEditor, {
+  // 数据变化后只重绘舞台，保持模块/视图状态与滚动容器不变
+  onChange: () => { renderStage('forward', false); refreshTodoBadge(); },
+});
+const todoApi = bindTodoEvents({ go, toast });
+provideTodoEditor(todoApi.openEditor);
+refreshTodoBadge();
 
 // 恢复登录态（token 有效则切到 cloud 模式并拉取云端快照）
 bootstrapSession().then(async (me) => {
