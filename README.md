@@ -1,4 +1,4 @@
-# 打工人工作台 · v0.2（UI + 账号与数据同步）
+# 打工人工作台 · v0.3（待办模块）
 
 新拟态（Neumorphism）风格的可交互高保真原型，含**两种使用模式**：免登录（数据只存本机）与登录（数据云端同步）。
 
@@ -84,9 +84,12 @@ worker-desk/
 ├─ src/
 │  ├─ styles.css     # Design Token + 基础组件 + 布局 + 响应式（全部色值在此）
 │  ├─ icons.js       # 线性图标集（currentColor，24 网格）
-│  ├─ config.js      # 模块 / 视图 / 设置项 / 强调色配置
+│  ├─ config.js      # 模块 / 视图 / 设置项 / 强调色配置（ready 标记控制「施工中」）
 │  ├─ data.js        # 演示数据 + 种子数据 seedData()
-│  ├─ views.js       # 16 个视图模板
+│  ├─ views.js       # 通用视图模板（待办视图已拆到 todo-views.js）
+│  ├─ todo-model.js  # 待办数据模型：四宫格互斥、时间格式化、逾期判定
+│  ├─ todo-views.js  # 待办三视图：项目&待办 / 四宫格 / 概览
+│  ├─ todo-app.js    # 待办交互：编辑器、拖拽打标与排期、缩放
 │  ├─ store.js       # 数据层：免登录 / 云端两套模式共用读写，5s 防抖同步
 │  ├─ api.js         # Worker 接口封装 + PoW 求解器
 │  ├─ auth.js        # 登录 / 注册 / 找回密码浮层
@@ -98,6 +101,51 @@ worker-desk/
 │  └─ wrangler.toml
 └─ preview/          # 各断点与深色模式的验证截图
 ```
+
+## 待办模块
+
+一级导航「待办」下三个视图，其余一级模块统一显示「施工中」（`config.js` 里 `ready: false`，由 `renderView()` 前置拦截）。
+
+### 1. 项目 & 待办（`todo:list`）
+
+- 项目卡片可折叠，显示完成度进度条、待办数、逾期数；右上角 `+` 直接在该项目下新建待办，铅笔进入编辑。
+- 独立待办单列一块，`projectId` 为空即归此处。
+- 勾选复选框即完成，实时写入 `localStorage`（登录态下 5s 防抖同步云端）。
+
+### 2. 四宫格（`todo:quadrant`）
+
+- 四个格子由 `QUADRANTS` 配置驱动：q1 紧急重要 / q2 重要不紧急 / q3 紧急不重要 / q4 不紧急不重要，各带一个行动建议（马上做 / 计划做 / 委托做 / 抽空做）。
+- 右侧「待分类」列出所有没有四宫格标签的项目与待办，拖进任一格即自动打标。
+- **互斥由写入口保证**，不靠 UI 约束：
+
+```js
+export function setQuadrant(tags, quadId) {
+  const rest = (tags || []).filter((t) => !QUAD_IDS.includes(t));
+  return quadId && QUAD_IDS.includes(quadId) ? [...rest, quadId] : rest;
+}
+```
+
+- 拖动项目时，其下所有待办一并继承该格，避免「项目在 Q1、待办散落各格」。
+
+### 3. 概览（`todo:overview`）
+
+- 右上角切换日 / 周 / 月：日视图左右两栏列当天项目与待办；周视图 7 列；月视图 42 格（含上下月补位，`is-other` 弱化）。
+- 任一格子都是放置区，把项目或待办拖进去即写入计划日期（`planAt`），项目同样连同下属待办一起排期。
+- 缩放 60% – 160%（步长 20%，钳制在两端）写在 `--ov-scale` 上：字号、内边距、行高下限全部按比例走，文字统一 `text-overflow: ellipsis` 单行截断；放大后超出容器时内层滚动，截图可滚到任意位置取全部文字。缩放值与视图选择都持久化在 `data.overviewScale` / `data.overviewRange`。
+
+### 数据模型
+
+```js
+Project { id, title, tags[], due, planAt, createdAt }
+Todo    { id, title, tags[], due, planAt, projectId, done, createdAt }
+```
+
+- `due` / `planAt` 统一 `YYYY-MM-DDTHH:mm`（喂 `<input type="datetime-local">`）；`planAt` 也接受 `YYYY-MM-DD`，概览按 `dayKey()` 聚合。
+- `tags` 里 `q1~q4` 是保留的四宫格标签，其余都算自由 Tag。
+
+### 拖拽协议
+
+可拖元素带 `data-drag-type="project|todo"` + `data-drag-id`，放置区带 `data-drop="quad:q1"` 或 `data-drop="day:2026-10-28"`。全部走 `document` 上的事件委托，视图重绘后无需重新绑定。
 
 ## 结构与交互约定
 
@@ -127,7 +175,7 @@ worker-desk/
 
 1. 计薪规则目前为固定常量（月薪 12000 / 21.75 天 / 8 小时，午休不计薪）。规则页表单尚未与读秒引擎联动。
 2. 外卖券、资讯为本地示例数据，未接真实接口。
-3. 「列表 / 看板」视图模式切换、通知中心、导入日历、导出 CSV 为占位交互。
+3. 通知中心、导入日历、导出 CSV 为占位交互；待办已支持「项目&待办 / 四宫格 / 概览」三视图。
 4. 同平台浏览器字体：优先 Manrope（数字/西文），中文回落 Noto Sans CJK / 苹方；若要完全离线，需将 Manrope 字体文件下载到本地。
 5. 未配置 `RESEND_API_KEY` 时后端走**开发模式**，验证码会在响应里回显并自动填入表单——上线前必须配好发信通道。
 
@@ -138,6 +186,11 @@ worker-desk/
 cd server && pnpm run dev   # 先起服务
 node test/api.test.mjs
 
-# 前端：Playwright 全流程 26 项断言（注册→同步→登出→登录→找回密码→备份）
-python3 /tmp/test/auth_flow.py
+# 前端 A：账号全流程（注册→同步→登出→登录→找回密码→备份）
+python3 test/auth_flow.py
+
+# 前端 B：待办模块（三视图 + 新建/编辑 + 拖拽打标排期 + 四宫格互斥 + 缩放 + 施工中拦截）
+python3 test/todo_flow.py
 ```
+
+两套前端脚本都要求先起静态服务器（8765）与 Worker（8787）。
