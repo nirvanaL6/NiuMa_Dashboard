@@ -47,7 +47,15 @@ export async function leadingZeroBits(salt, nonce) {
   return bits;
 }
 
-const PBKDF2_ITER = 210000; // OWASP 2023 建议 ≥600k；Worker 免费版 CPU 10ms，取 210k 为性能与安全的折中
+/**
+ * PBKDF2 迭代次数。
+ * Cloudflare Workers 的 WebCrypto 对 PBKDF2 有硬性上限：超过 100000 次直接抛
+ * NotSupportedError（"iteration counts above 100000 are not supported"），
+ * 而本地 wrangler（workerd 的 Node 兼容层）没有这个限制——这是「本地正常、
+ * 线上注册 500」的根因。必须 ≤100000。
+ */
+export const PBKDF2_ITER = 100000;
+// 兼容旧哈希：历史存量数据可能用过其它迭代次数，校验时以库中记录的值为准
 
 export async function hashPassword(password) {
   const salt = crypto.getRandomValues(new Uint8Array(16));
@@ -64,6 +72,7 @@ export async function verifyPassword(password, stored) {
   const parts = String(stored || '').split('$');
   if (parts.length !== 5 || parts[0] !== 'pbkdf2') return false;
   const iter = Number(parts[2]);
+  if (!Number.isFinite(iter) || iter <= 0 || iter > PBKDF2_ITER) return false;
   const salt = unb64(parts[3]);
   const expected = parts[4];
   const key = await crypto.subtle.importKey('raw', te.encode(password), 'PBKDF2', false, ['deriveBits']);

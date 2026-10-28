@@ -178,3 +178,36 @@ curl -X PUT -H "Authorization: Bearer $TOKEN" -H "content-type: application/json
   "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT/workers/domains" \
   -d '{"environment":"production","hostname":"desk.763988.xyz","service":"worker-desk-api","zone_id":"<zone_id>"}'
 ```
+
+---
+
+## 人机验证与验证码的绑定关系（migrations/0002）
+
+PoW 挑战是**一次性**的（`pow_challenges.consumed_at`）。产品要求「注册时在点发送验证码时做人机验证，
+登录时才在提交时做」，所以不能两处都 `consumePow`：前端只解一次挑战，第二次必然失败。
+
+现在的约定：
+
+| 场景 | 人机验证时机 | 服务端校验点 |
+| --- | --- | --- |
+| 注册 | 点「获取验证码」 | `sendCode` 里 `consumePow`，成功后把 `email_codes.pow_verified = 1` |
+| 注册提交 | 不再验证 | `signup` 校验**该验证码记录的** `pow_verified`，不要求 `pow` |
+| 找回密码 | 点「获取验证码」 | 同上 |
+| 找回密码提交 | 不再验证 | `verifyResetCode` 校验 `pow_verified` |
+| 登录 | 点「登录」 | `login` 里 `consumePow`，每次都要现解 |
+
+一次验证绑定一条验证码，仍然能挡住「刷接口滥发邮件」。升级旧库需要执行：
+
+```bash
+pnpm migrate:remote            # 幂等，已执行的会跳过
+```
+
+## 已知的两个坑（已修，供后续排查参考）
+
+1. **PBKDF2 迭代次数 > 100000 在 Workers 上直接抛 `NotSupportedError`**
+   本地 workerd 无此限制，所以表现为「本地注册正常、线上 500」。见 `src/crypto.js`。
+
+2. **倒计时不能按「每秒 -1」累加**
+   16 bit 的 PoW 要用 4 个 Worker 满负荷算 SHA-256，主线程会被抢时序，`setInterval` 连续掉帧 → 表现为
+   「偶尔不读秒」。现在改记截止时间戳、每 250ms 按真实时间差重算，掉帧自动追平。
+   另外发送中与读秒是两种互斥态，用 `data-busy` 区分，不能互相覆盖文案。

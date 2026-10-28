@@ -171,11 +171,22 @@ function render() {
 }
 
 /* ---------------- 交互 ---------------- */
+/**
+ * 错误展示。`code` 不在表单里有对应字段时（例如 code_invalid），
+ * 名字就叫 code，选择器能匹配到 data-err="code"，之前却因为只认 password 兜底而丢失提示。
+ */
 function showErr(name, msg) {
   const em = root.querySelector(`[data-err="${name}"]`);
   if (em) em.textContent = msg || '';
   const input = root.querySelector(`#${name}`);
   if (input) input.classList.toggle('is-bad', !!msg);
+}
+
+/** 兜底提示：字段不存在时打到表单底部，绝不静默吞掉错误 */
+function showFormMsg(msg) {
+  const st = $('#authState', root);
+  if (st) st.textContent = msg;
+  else setCaptchaText(`${icon('alert', 13)} <span>${msg}</span>`);
 }
 
 function clearErrs() {
@@ -201,6 +212,11 @@ function setBusy(on, label = '处理中…') {
 function setCaptchaText(html) {
   const n = $('#captchaState', root);
   if (n) n.innerHTML = html;
+}
+
+/** 未验证的初始文案。用 innerHTML 复刻模板里的结构，保证样式与图标一致 */
+function resetCaptcha() {
+  setCaptchaText(`${icon('shield', 13)} <span>提交时会自动完成人机验证</span>`);
 }
 
 function onClick(e) {
@@ -251,9 +267,15 @@ function pwdProblem(pwd, pwd2) {
   return '';
 }
 
+/**
+ * 倒计时按钮文案。
+ * 用 data-busy 区分「发送中」与「读秒中」两种禁用态，两者不能互相覆盖——
+ * 之前一律用 textContent 硬写，发送中的按钮会被倒计时文案顶掉，反之亦然。
+ */
 function updateResendLabel() {
   const btn = root?.querySelector('[data-sendcode]');
   if (!btn) return;
+  if (btn.dataset.busy === '1') return; // 发送中由 sendCode 自己管文案
   if (resendTimer > 0) {
     btn.textContent = `${resendTimer}s 后重发`;
     btn.disabled = true;
@@ -263,24 +285,37 @@ function updateResendLabel() {
   }
 }
 
+/**
+ * 倒计时。
+ * 关键点：不能按「每秒 -1」累加，那样主线程被 PoW 算力挤占时会连续掉帧、丢秒，
+ * 表现就是用户说的「偶尔不读秒」。改成记截止时间戳，每帧按真实时间差重算，
+ * 掉帧后自动追平，永远不会越读越慢。
+ */
 function startResend(sec = 60) {
+  clearInterval(startResend.timer);
+  startResend.deadline = Date.now() + sec * 1000;
   resendTimer = sec;
   updateResendLabel();
-  clearInterval(startResend.timer);
   startResend.timer = setInterval(() => {
-    resendTimer -= 1;
-    if (resendTimer <= 0) {
+    const left = Math.ceil((startResend.deadline - Date.now()) / 1000);
+    if (left <= 0) {
       clearInterval(startResend.timer);
+      startResend.deadline = 0;
       resendTimer = 0;
+    } else {
+      resendTimer = left;
     }
     updateResendLabel();
-  }, 1000);
+  }, 250);
 }
 
 /** 切换表单时清掉倒计时（服务端仍有 60s 限流兜底） */
 function resetResend() {
   clearInterval(startResend.timer);
+  startResend.deadline = 0;
   resendTimer = 0;
+  const btn = root?.querySelector('[data-sendcode]');
+  if (btn) delete btn.dataset.busy;
   updateResendLabel();
 }
 
@@ -296,6 +331,8 @@ async function solveCaptcha(purpose) {
 async function sendCode(btn) {
   const email = emailValue();
   if (!EMAIL_RE.test(email)) return showErr('email', '请输入正确的邮箱地址');
+  // busy 标记：防止 updateResendLabel 在发送期间把「发送中…」覆盖成「获取验证码」
+  btn.dataset.busy = '1';
   btn.disabled = true;
   btn.textContent = '发送中…';
   try {
@@ -307,20 +344,24 @@ async function sendCode(btn) {
       honeypot: root.querySelector('[name="website"]')?.value || '',
     });
     lastEmail = email;
+    delete btn.dataset.busy;
     startResend(60);
     document.dispatchEvent(new CustomEvent('auth:code-sent', { detail: res }));
+    // 人机验证已在本函数开头完成，这里统一收起「通过」状态，避免用户误以为还有第二次验证
+    setCaptchaText(`${icon('check', 13, 2.4)} <span>人机验证已通过</span>`);
     if (res.devMode && res.devCode) {
       // 开发模式：后端没配邮件通道，把验证码填进去省事，并明确告知
       const code = $('#code', root);
       if (code) code.value = res.devCode;
       showErr('code', `开发模式：验证码 ${res.devCode} 已自动填入（生产环境走邮件）`);
-      setCaptchaText(`${icon('check', 13, 2.4)} <span>人机验证通过 · 开发模式（未配置发信服务）</span>`);
     } else {
       showErr('code', `验证码已发送到 ${res.masked || email}`);
     }
   } catch (err) {
+    // 发送失败时人机验证并未通过，要把状态复位，否则会一直显示「通过」
+    resetCaptcha();
     handleErr(err, 'email');
-    btn.disabled = false;
+    delete btn.dataset.busy;
     updateResendLabel();
   }
 }
@@ -344,10 +385,11 @@ function handleErr(err, fallbackField = 'password') {
   };
   const fieldName = code in map ? map[code] : fallbackField;
   const msg = err?.message || '操作失败，请重试';
-  if (fieldName) showErr(fieldName, msg);
-  else {
-    const st = $('#authState', root);
-    if (st) st.textContent = msg;
+  if (fieldName && root.querySelector(`[data-err="${fieldName}"]`)) {
+    showErr(fieldName, msg);
+  } else {
+    // 字段不存在（例如挑战类错误、风控类错误）时落到表单底部，绝不静默吞掉
+    showFormMsg(msg);
     if (code.startsWith('captcha')) setCaptchaText(`${icon('alert', 13)} <span>${msg}</span>`);
   }
 }
@@ -384,8 +426,9 @@ async function onSubmit(e) {
     if (bad) return showErr(bad.includes('两次') ? 'password2' : 'password', bad);
     setBusy(true, '注册中…');
     try {
-      const pow = await solveCaptcha('signup');
-      const res = await authApi.signup({ email, code: data.code, password: data.password, password2: data.password2, pow, honeypot: hp });
+      // 注册的人机验证在「获取验证码」时已完成且被服务端消费，这里不能再来一次：
+      // 挑战是一次性的，重复求解既浪费时间又必然失败
+      const res = await authApi.signup({ email, code: data.code, password: data.password, password2: data.password2, honeypot: hp });
       await afterAuth(res, 'signup');
     } catch (err) {
       handleErr(err);
@@ -401,8 +444,8 @@ async function onSubmit(e) {
     if (!/^\d{6}$/.test(String(data.code || ''))) return showErr('code', '请输入 6 位数字验证码');
     setBusy(true, '校验中…');
     try {
-      const pow = await solveCaptcha('reset');
-      const res = await authApi.verifyReset({ email, code: data.code, pow });
+      // 人机验证同样在「获取验证码」时完成，服务端校验的是验证码记录上的标记
+      const res = await authApi.verifyReset({ email, code: data.code });
       resetToken = res.resetToken;
       lastEmail = email;
       setBusy(false);
@@ -529,8 +572,7 @@ export async function logout(all = false) {
 }
 
 export function showFormError(msg) {
-  const st = $('#authState', root);
-  if (st) st.textContent = msg;
+  showFormMsg(msg);
 }
 
 export { API_BASE };
