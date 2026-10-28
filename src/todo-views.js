@@ -29,11 +29,17 @@ function tagChip(t) {
   return `<span class="tag">#${esc(t)}</span>`;
 }
 
+/**
+ * 待办行。
+ * 整行可点（data-edit-todo 挂在 li 上）：大屏用户不必再去瞄准右侧的小铅笔。
+ * 勾选按钮独立且先于行命中，点它只切换完成态、不会打开编辑器。
+ */
 function todoRow(t, { showProject = true } = {}) {
   const p = projects().find((x) => x.id === t.projectId);
   const overdue = isOverdue(t);
   const due = fmtDue(t.due);
   return `<li class="td ${t.done ? 'is-done' : ''} ${overdue ? 'is-overdue' : ''}" data-id="${esc(t.id)}"
+      data-todo-row="${esc(t.id)}" data-edit-todo="${esc(t.id)}"
       ${dragAttrs('todo', t.id)}>
     <button class="td__check" data-toggle-todo="${esc(t.id)}" aria-checked="${t.done}" role="checkbox"
       aria-label="${t.done ? '标记未完成' : '标记完成'}">${icon('check', 11, 3)}</button>
@@ -47,7 +53,7 @@ function todoRow(t, { showProject = true } = {}) {
         ${quadOf(t.tags) ? tagChip(quadOf(t.tags)) : ''}
       </div>
     </div>
-    <button class="td__edit" data-edit-todo="${esc(t.id)}" aria-label="编辑待办" title="编辑">${icon('pencil', 13)}</button>
+    <span class="td__edit" aria-hidden="true" title="点击编辑">${icon('pencil', 13)}</span>
   </li>`;
 }
 
@@ -158,8 +164,10 @@ export function viewTodoQuadrant() {
               <span class="qi__txt" title="${esc(p.title)}">${esc(p.title)}</span>
               <span class="qi__n">${todos().filter((t) => t.projectId === p.id).length}</span>
             </div>`).join('')}
-            ${ts.map((t) => `<div class="qi ${t.done ? 'is-done' : ''}" ${dragAttrs('todo', t.id)} title="${esc(t.title)}">
-              <span class="qi__txt" title="${esc(t.title)}">${esc(t.title)}</span>
+            ${ts.map((t) => `<div class="qi ${t.done ? 'is-done' : ''}" data-todo-row="${esc(t.id)}" ${dragAttrs('todo', t.id)}>
+              <button class="qi__check" data-toggle-todo="${esc(t.id)}" aria-checked="${t.done}" role="checkbox"
+                aria-label="${t.done ? '标记未完成' : '标记完成'}">${icon('check', 10, 3)}</button>
+              <span class="qi__txt" data-edit-todo="${esc(t.id)}" title="${esc(t.title)}（点击编辑）">${esc(t.title)}</span>
               ${t.due ? `<span class="qi__due">${dayKey(t.due).slice(5)}</span>` : ''}
             </div>`).join('')}
             ${ps.length + ts.length === 0 ? '<div class="quad-cell__empty">拖项目或待办到这里</div>' : ''}
@@ -219,8 +227,12 @@ function dayCell(d, { today, range }) {
       ${other ? `<span class="day__mon">${d.getMonth() + 1}月</span>` : ''}
     </div>
     <div class="day__body">
-      ${shown.map(({ kind, x }) => `<div class="de de--${kind} ${x.done ? 'is-done' : ''}" ${dragAttrs(kind === 'p' ? 'project' : 'todo', x.id)}>
-        ${kind === 'p' ? '<span class="de__badge">项</span>' : ''}<span class="de__txt" title="${esc(x.title)}">${esc(x.title)}</span>
+      ${shown.map(({ kind, x }) => `<div class="de de--${kind} ${x.done ? 'is-done' : ''}" ${kind === 'p' ? `data-project-row="${esc(x.id)}"` : `data-todo-row="${esc(x.id)}"`} ${dragAttrs(kind === 'p' ? 'project' : 'todo', x.id)}>
+        ${kind === 'p'
+          ? `<span class="de__badge">项</span><span class="de__txt" data-edit-project="${esc(x.id)}" title="${esc(x.title)}（点击编辑）">${esc(x.title)}</span>`
+          : `<button class="de__check" data-toggle-todo="${esc(x.id)}" aria-checked="${x.done}" role="checkbox"
+              aria-label="${x.done ? '标记未完成' : '标记完成'}">${icon('check', 9, 3)}</button>
+             <span class="de__txt" data-edit-todo="${esc(x.id)}" data-todo-anchor="${esc(x.id)}" title="${esc(x.title)}（点击编辑）">${esc(x.title)}</span>`}
       </div>`).join('')}
       ${more > 0 ? `<div class="de de--more">+${more} 条</div>` : ''}
       ${total === 0 ? '<div class="day__empty"></div>' : ''}
@@ -255,11 +267,14 @@ export function viewTodoOverview() {
     body = `<div class="ov-day">
       <div class="ov-day__col">
         <h5>项目 ${ps.length}</h5>
-        ${ps.length ? ps.map((p) => `<div class="de de--p" ${dragAttrs('project', p.id)}><span class="de__badge">项</span><span class="de__txt">${esc(p.title)}</span></div>`).join('') : '<div class="ov-none">今天没有项目</div>'}
+        ${ps.length ? ps.map((p) => `<div class="de de--p" data-project-row="${esc(p.id)}" ${dragAttrs('project', p.id)}><span class="de__badge">项</span><span class="de__txt" data-edit-project="${esc(p.id)}" title="${esc(p.title)}（点击编辑）">${esc(p.title)}</span></div>`).join('') : '<div class="ov-none">今天没有项目</div>'}
       </div>
       <div class="ov-day__col">
         <h5>待办 ${ts.length}</h5>
-        ${ts.length ? ts.map((t) => `<div class="de de--t ${t.done ? 'is-done' : ''}" ${dragAttrs('todo', t.id)}><span class="de__txt">${esc(t.title)}</span><span class="de__time">${t.due ? dayKey(t.due).slice(5) : ''} ${t.due ? String(t.due).slice(11, 16) : ''}</span></div>`).join('') : '<div class="ov-none">今天没有待办</div>'}
+        ${ts.length ? ts.map((t) => `<div class="de de--t ${t.done ? 'is-done' : ''}" data-todo-row="${esc(t.id)}" ${dragAttrs('todo', t.id)}>
+          <button class="de__check" data-toggle-todo="${esc(t.id)}" aria-checked="${t.done}" role="checkbox" aria-label="${t.done ? '标记未完成' : '标记完成'}">${icon('check', 9, 3)}</button>
+          <span class="de__txt" data-edit-todo="${esc(t.id)}" title="${esc(t.title)}（点击编辑）">${esc(t.title)}</span>
+          <span class="de__time">${t.due ? dayKey(t.due).slice(5) : ''} ${t.due ? String(t.due).slice(11, 16) : ''}</span></div>`).join('') : '<div class="ov-none">今天没有待办</div>'}
       </div>
     </div>`;
   } else if (range === 'week') {

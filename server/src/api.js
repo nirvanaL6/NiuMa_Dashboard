@@ -3,7 +3,7 @@
  * 所有 SQL 都带索引条件，见 migrations/0001_init.sql
  */
 import {
-  b64, codeHash, hashPassword, ipHash, leadingZeroBits, newToken, randomDigits, randomId, tokenHash, verifyPassword,
+  b64, codeHash, hashPassword, ipHash, newToken, randomDigits, randomId, tokenHash, verifyPassword,
 } from './crypto.js';
 import { sendCodeMail } from './mail.js';
 import { bumpUsage, countRecent, enforceCloudWriteQuota, usageToday } from './limits.js';
@@ -12,7 +12,6 @@ const MIN = 60 * 1000;
 const CODE_TTL = 10 * MIN;
 const SESSION_TTL = 30 * 24 * 60 * MIN;
 const RESET_TTL = 15 * MIN;
-const POW_TTL = 5 * MIN;
 const MAX_CODE_ATTEMPTS = 5;
 const MAX_LOGIN_FAILS = 6;
 const LOCK_MS = 10 * MIN;
@@ -62,73 +61,82 @@ async function sha(env) {
 }
 
 /* ------------------------------------------------------------------ */
-/* 人机验证：服务端签发 PoW 挑战，前端找 nonce 使 sha256(salt|nonce) 前导 0 比特达标 */
+/* 人机验证：Cloudflare Turnstile                                      */
+/*                                                                    */
+/* 之前是自研 PoW（服务端发挑战、浏览器跑 SHA-256 找 nonce），问题很多：  */
+/*   - 前端用 Blob + Worker 动态造脚本，被 CSP / 企业网络 / 隐私插件挡掉就直接失败 */
+/*   - 难度写死 16 bit，低端机要算好几秒，主线程被挤占导致倒计时不读秒    */
+/*   - 挑战存在 D1 里，每次验证 4~5 次 SQL，白白吃额度                   */
+/* Turnstile 由 Cloudflare 托管：前端只负责拿一次性 token，后端拿 token  */
+/* 去 siteverify 换结果，不落库、不占 D1 额度。                        */
 /* ------------------------------------------------------------------ */
-export async function issuePow(env, req, purpose) {
-  const iph = await ipHash(clientIp(req), await sha(env));
-  // 每 IP 每分钟最多 40 次挑战：单次登录/注册最多用 1 次，远超正常用户；批量脚本会被卡住
-  const recent = await countRecent(
-    env,
-    'SELECT COUNT(*) AS n FROM pow_challenges WHERE ip_hash = ?1 AND created_at > ?2',
-    [iph, Date.now() - MIN],
-  );
-  if (recent > 40) {
-    const e = new Error('请求过于频繁，请稍后再试');
-    e.code = 'too_many_requests';
-    e.status = 429;
-    throw e;
-  }
-  const id = randomId(12);
-  const salt = randomId(12);
-  // 难度：默认 16 bit（约 6.5 万次哈希，浏览器 50–150ms），可用环境变量调节
-  const difficulty = Number(env.POW_DIFFICULTY || 16);
-  const now = Date.now();
-  await env.DB.prepare(
-    `INSERT INTO pow_challenges (id, salt, difficulty, purpose, ip_hash, attempts, expires_at, created_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7)`,
-  ).bind(id, salt, difficulty, purpose, iph, now + POW_TTL, now).run();
-  // 顺手清理过期挑战（两次写合并成一次往返）
-  // 挑战有效期 5 分钟，过期 10 分钟后清掉，够排查又不囤数据
-  await env.DB.prepare('DELETE FROM pow_challenges WHERE expires_at < ?1').bind(now - 10 * MIN).run();
-  return { id, salt, difficulty };
+const TS_VERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
+/** Cloudflare 官方测试站点密钥：始终通过，用于本地与「还没申请正式密钥」时跑通链路 */
+const TS_TEST_SITE_KEY = '1x00000000000000000000AA';
+const TS_TEST_SECRET = '1x0000000000000000000000000000000AA';
+
+/** 给前端的公开配置（site key 本身就可公开，真正的密钥只在 Worker 里） */
+export function captchaConfig(env) {
+  const siteKey = (env.TURNSTILE_SITE_KEY || '').trim();
+  return { provider: 'turnstile', siteKey, enabled: !!siteKey };
 }
 
-async function consumePow(env, payload) {
-  const id = payload?.powId;
-  const nonce = payload?.nonce;
-  if (!id || nonce == null) {
+function turnstileSecret(env) {
+  const siteKey = (env.TURNSTILE_SITE_KEY || '').trim();
+  const secret = (env.TURNSTILE_SECRET_KEY || '').trim();
+  if (secret) return secret;
+  // 用官方测试站点密钥时自动配对测试密钥：不配 secret 也能完整跑通校验链路
+  if (siteKey === TS_TEST_SITE_KEY) return TS_TEST_SECRET;
+  const e = new Error('服务端未配置 TURNSTILE_SECRET_KEY，人机验证不可用');
+  e.code = 'server_misconfigured';
+  e.status = 503;
+  throw e;
+}
+
+/**
+ * 校验 Turnstile token。
+ * token 是一次性的、有效期 300 秒，因此每个需要验证的请求都要带上新 token。
+ */
+export async function verifyTurnstile(env, captcha, ip) {
+  const token = typeof captcha === 'string' ? captcha : captcha?.token;
+  const siteKey = (env.TURNSTILE_SITE_KEY || '').trim();
+  if (!siteKey) return true; // 未启用人机验证
+  if (!token) {
     const e = new Error('请先完成人机验证');
     e.code = 'captcha_required';
     e.status = 400;
     throw e;
   }
-  const row = await env.DB.prepare(
-    'SELECT salt, difficulty, expires_at, consumed_at, attempts FROM pow_challenges WHERE id = ?1',
-  ).bind(id).first();
-  const bad = () => {
+  const secret = turnstileSecret(env);
+  let out = {};
+  try {
+    const res = await fetch(TS_VERIFY_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ secret, response: token, remoteip: ip || undefined }),
+    });
+    out = await res.json();
+  } catch (err) {
+    console.error('[turnstile]', err?.stack || err);
+    const e = new Error('人机验证服务暂时不可用，请稍后重试');
+    e.code = 'captcha_error';
+    e.status = 503;
+    throw e;
+  }
+  if (!out.success) {
+    console.error('[turnstile] failed', JSON.stringify(out['error-codes'] || []));
     const e = new Error('人机验证未通过，请重试');
     e.code = 'captcha_failed';
     e.status = 400;
     throw e;
-  };
-  if (!row || row.consumed_at || row.expires_at < Date.now()) bad();
-  if (row.attempts > 20) bad();
-  const bits = await leadingZeroBits(row.salt, String(nonce));
-  if (bits < row.difficulty) {
-    await env.DB.prepare('UPDATE pow_challenges SET attempts = attempts + 1 WHERE id = ?1').bind(id).run();
-    bad();
   }
-  const res = await env.DB.prepare(
-    'UPDATE pow_challenges SET consumed_at = ?1 WHERE id = ?2 AND consumed_at IS NULL',
-  ).bind(Date.now(), id).run();
-  if (!res.meta.changes) bad();
   return true;
 }
 
 /* ------------------------------------------------------------------ */
 /* 验证码 */
 /* ------------------------------------------------------------------ */
-export async function sendCode(env, req, { email, purpose, pow, honeypot }) {
+export async function sendCode(env, req, { email, purpose, captcha, honeypot }) {
   if (honeypot) {
     // 蜜罐被填：机器人，直接返回成功但不做任何事
     return { sent: true, devMode: false, delivered: false };
@@ -137,7 +145,7 @@ export async function sendCode(env, req, { email, purpose, pow, honeypot }) {
     const e = new Error('验证码用途不合法');
     e.code = 'bad_request'; e.status = 400; throw e;
   }
-  await consumePow(env, pow);
+  await verifyTurnstile(env, captcha, clientIp(req));
   const emailNorm = normalizeEmail(email);
   if (!validEmail(emailNorm)) {
     const e = new Error('邮箱格式不正确');
@@ -175,8 +183,11 @@ export async function sendCode(env, req, { email, purpose, pow, honeypot }) {
   }
 
   const code = randomDigits(6);
+  // 人机验证结果落在验证码记录上：发码时通过才写 captcha_ok=1，
+  // 注册/找回密码时校验「这次验证码的发送通过过人机验证」——
+  // token 是一次性的，用户不可能在提交时再解一次，见 migrations/0002、0003
   await env.DB.prepare(
-    `INSERT INTO email_codes (id, email_norm, purpose, code_hash, attempts, expires_at, created_at, pow_verified)
+    `INSERT INTO email_codes (id, email_norm, purpose, code_hash, attempts, expires_at, created_at, captcha_ok)
      VALUES (?1, ?2, ?3, ?4, 0, ?5, ?6, 1)`,
   ).bind(randomId(12), emailNorm, purpose, await codeHash(code, await sha(env)), now + CODE_TTL, now).run();
   await env.DB.prepare('DELETE FROM email_codes WHERE expires_at < ?1').bind(now - 24 * 60 * MIN).run();
@@ -213,7 +224,7 @@ function maskEmail(email) {
 async function verifyCode(env, emailNorm, purpose, code) {
   const now = Date.now();
   const row = await env.DB.prepare(
-    `SELECT id, code_hash, attempts, expires_at, pow_verified FROM email_codes
+    `SELECT id, code_hash, attempts, expires_at, captcha_ok FROM email_codes
      WHERE email_norm = ?1 AND purpose = ?2 AND consumed_at IS NULL AND expires_at > ?3
      ORDER BY created_at DESC LIMIT 1`,
   ).bind(emailNorm, purpose, now).first();
@@ -235,7 +246,7 @@ async function verifyCode(env, emailNorm, purpose, code) {
   await env.DB.prepare(
     'UPDATE email_codes SET consumed_at = ?1 WHERE id = ?2 AND consumed_at IS NULL',
   ).bind(now, row.id).run();
-  return { powVerified: !!row.pow_verified };
+  return { captchaOk: !!row.captcha_ok };
 }
 
 /* ------------------------------------------------------------------ */
@@ -285,8 +296,8 @@ export async function signup(env, req, body) {
     const e = new Error('注册失败，请稍后重试');
     e.code = 'bad_request'; e.status = 400; throw e;
   }
-  // 人机验证在「获取验证码」时已完成（挑战一次性，注册提交不再重复校验 pow），
-  // 这里改为校验：这条验证码的发送是否通过过人机验证。见 migrations/0002_code_pow.sql
+  // 人机验证在「获取验证码」时已完成（Turnstile token 一次性，注册提交不能再解一次），
+  // 这里校验：这条验证码的发送是否通过过人机验证。见 migrations/0003_turnstile.sql
   const emailNorm = normalizeEmail(body?.email);
   if (!validEmail(emailNorm)) {
     const e = new Error('邮箱格式不正确'); e.code = 'bad_request'; e.status = 400; throw e;
@@ -298,8 +309,8 @@ export async function signup(env, req, body) {
   if (pwErr) {
     const e = new Error(pwErr); e.code = 'password_weak'; e.status = 400; throw e;
   }
-  const { powVerified } = await verifyCode(env, emailNorm, 'signup', body?.code);
-  if (!powVerified) {
+  const { captchaOk } = await verifyCode(env, emailNorm, 'signup', body?.code);
+  if (!captchaOk) {
     const e = new Error('请先完成人机验证');
     e.code = 'captcha_required'; e.status = 400; throw e;
   }
@@ -318,7 +329,7 @@ export async function signup(env, req, body) {
 }
 
 export async function login(env, req, body) {
-  await consumePow(env, body?.pow);
+  await verifyTurnstile(env, body?.captcha, clientIp(req));
   const emailNorm = normalizeEmail(body?.email);
   const password = String(body?.password || '');
   const locked = await env.DB.prepare(
@@ -372,10 +383,10 @@ export async function me(env, req) {
 
 /** 找回密码第一步：校验验证码并签发一次性重置令牌 */
 export async function verifyResetCode(env, req, body) {
-  // 同注册：人机验证已在发码时完成，这里校验验证码记录上的 pow_verified 标记
+  // 同注册：人机验证已在发码时完成，这里校验验证码记录上的 captcha_ok 标记
   const emailNorm = normalizeEmail(body?.email);
-  const { powVerified } = await verifyCode(env, emailNorm, 'reset', body?.code);
-  if (!powVerified) {
+  const { captchaOk } = await verifyCode(env, emailNorm, 'reset', body?.code);
+  if (!captchaOk) {
     const e = new Error('请先完成人机验证');
     e.code = 'captcha_required'; e.status = 400; throw e;
   }

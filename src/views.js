@@ -8,6 +8,7 @@ import { SCHEDULE, WEEK, NEWS, COUPONS, PRICE_COMPARE } from './data.js';
 import { getData } from './store.js';
 import { viewTodoList, viewTodoQuadrant, viewTodoOverview } from './todo-views.js';
 import { QUADRANTS, quadOf, fmtDue } from './todo-model.js';
+import { renderSelectField, renderTimeField } from './form-controls.js';
 
 const money = (n, digits = 2) =>
   n.toLocaleString('zh-CN', { minimumFractionDigits: digits, maximumFractionDigits: digits });
@@ -450,12 +451,18 @@ function viewSalaryRules() {
       <div class="rate-form">
         <div class="field"><label for="r-month">月薪（元）</label><input id="r-month" type="number" value="12000" inputmode="decimal" /></div>
         <div class="field"><label for="r-days">月计薪天数</label><input id="r-days" type="number" value="21.75" step="0.25" inputmode="decimal" /></div>
-        <div class="field"><label for="r-start">上班时间</label><input id="r-start" type="time" value="09:30" /></div>
-        <div class="field"><label for="r-end">下班时间</label><input id="r-end" type="time" value="18:00" /></div>
+        <div class="field"><label for="r-start">上班时间</label>${renderTimeField({ id: 'r-start', value: '09:30' })}</div>
+        <div class="field"><label for="r-end">下班时间</label>${renderTimeField({ id: 'r-end', value: '18:00' })}</div>
         <div class="field"><label for="r-break">午休时长（分钟）</label><input id="r-break" type="number" value="60" inputmode="numeric" /></div>
-        <div class="field"><label for="r-ot">加班倍率</label>
-          <select id="r-ot"><option>1.0×（平时）</option><option selected>1.5×（周末）</option><option>3.0×（法定）</option></select>
-        </div>
+        <div class="field"><label for="r-ot">加班倍率</label>${renderSelectField({
+          id: 'r-ot',
+          value: '1.5',
+          options: [
+            { value: '1.0', label: '1.0×（平时）' },
+            { value: '1.5', label: '1.5×（周末）' },
+            { value: '3.0', label: '3.0×（法定）' },
+          ],
+        })}</div>
       </div>
       <p class="card-sub" style="margin-top:14px">按「月薪 ÷ 21.75 ÷ 8 小时」计算时薪，午休不计薪。规则可随时修改，历史数据不回溯。</p>
     </div>

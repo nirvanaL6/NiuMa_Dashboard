@@ -7,7 +7,7 @@
  * - 人机验证在提交时静默进行，界面上只给一行轻提示，不弹弹窗
  */
 import { icon } from './icons.js';
-import { authApi, runCaptcha, ApiError, setToken, getToken, API_BASE } from './api.js';
+import { authApi, captchaConfig, runTurnstile, resetTurnstile, ApiError, setToken, getToken, API_BASE } from './api.js';
 import * as store from './store.js';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -27,6 +27,12 @@ function el(tag, cls, html) {
   if (cls) n.className = cls;
   if (html != null) n.innerHTML = html;
   return n;
+}
+
+/** 人机验证区：一行状态提示 + Turnstile 挂载点（挂载点平时折叠，验证时才展开） */
+function captchaBlock() {
+  return `<div class="auth-human" id="captchaState">${icon('shield', 13)} <span>本站点受 Cloudflare 人机验证保护</span></div>
+        <div class="auth-ts" id="captchaSlot" hidden></div>`;
 }
 
 /* ---------------- 壳 ---------------- */
@@ -113,7 +119,7 @@ function render() {
         </div>
         <input type="text" name="website" tabindex="-1" autocomplete="off" class="auth-hp" aria-hidden="true" />
         <button class="btn btn--primary auth-submit" type="submit">${icon('lock', 15)} 登录</button>
-        <div class="auth-human" id="captchaState">${icon('shield', 13)} <span>提交时会自动完成人机验证</span></div>
+        ${captchaBlock()}
       </form>`;
   } else if (mode === 'signup') {
     body.innerHTML = `
@@ -133,7 +139,7 @@ function render() {
         ${field('password2', '确认密码', 'password', 'autocomplete="new-password" placeholder="再输入一次"')}
         <input type="text" name="website" tabindex="-1" autocomplete="off" class="auth-hp" aria-hidden="true" />
         <button class="btn btn--primary auth-submit" type="submit">${icon('check', 15, 2.2)} 注册并登录</button>
-        <div class="auth-human" id="captchaState">${icon('shield', 13)} <span>提交时会自动完成人机验证</span></div>
+        ${captchaBlock()}
       </form>`;
   } else {
     body.innerHTML = `
@@ -157,7 +163,7 @@ function render() {
           <em class="auth-err" data-err="code" aria-live="polite"></em>
         </div>
         <button class="btn btn--primary auth-submit" type="submit">${icon('arrowRight', 15)} 下一步</button>
-        <div class="auth-human" id="captchaState">${icon('shield', 13)} <span>提交时会自动完成人机验证</span></div>
+        ${captchaBlock()}
       </form>`}
       <button class="auth-link auth-back" data-tab="login">${icon('chevronLeft', 13)} 返回登录</button>`;
   }
@@ -216,7 +222,7 @@ function setCaptchaText(html) {
 
 /** 未验证的初始文案。用 innerHTML 复刻模板里的结构，保证样式与图标一致 */
 function resetCaptcha() {
-  setCaptchaText(`${icon('shield', 13)} <span>提交时会自动完成人机验证</span>`);
+  setCaptchaText(`${icon('shield', 13)} <span>本站点受 Cloudflare 人机验证保护</span>`);
 }
 
 function onClick(e) {
@@ -287,7 +293,7 @@ function updateResendLabel() {
 
 /**
  * 倒计时。
- * 关键点：不能按「每秒 -1」累加，那样主线程被 PoW 算力挤占时会连续掉帧、丢秒，
+ * 关键点：不能按「每秒 -1」累加，那样主线程被占满时会连续掉帧、丢秒，
  * 表现就是用户说的「偶尔不读秒」。改成记截止时间戳，每帧按真实时间差重算，
  * 掉帧后自动追平，永远不会越读越慢。
  */
@@ -319,13 +325,27 @@ function resetResend() {
   updateResendLabel();
 }
 
-async function solveCaptcha(purpose) {
+/**
+ * 完成一次人机验证，返回 { token } 交给后端。
+ * 后端没启用（siteKey 为空）时返回 null，调用方照常发请求。
+ */
+async function solveCaptcha() {
+  const cfg = await captchaConfig();
+  const slot = $('#captchaSlot', root);
+  if (!cfg?.enabled || !cfg?.siteKey || !slot) return null;
   setCaptchaText(`${icon('shield', 13)} <span>正在完成人机验证…</span>`);
-  const t0 = performance.now();
-  const pow = await runCaptcha(purpose);
-  const ms = Math.round(performance.now() - t0);
-  setCaptchaText(`${icon('check', 13, 2.4)} <span>人机验证通过（${ms}ms）</span>`);
-  return pow;
+  slot.hidden = false;
+  try {
+    const token = await runTurnstile({ siteKey: cfg.siteKey, slot });
+    slot.hidden = true;
+    setCaptchaText(`${icon('check', 13, 2.4)} <span>人机验证通过</span>`);
+    return { token };
+  } catch (err) {
+    // 失败/超时都要把组件复位，否则下次渲染会叠在上一次的上面
+    resetTurnstile(slot);
+    slot.hidden = true;
+    throw err;
+  }
 }
 
 async function sendCode(btn) {
@@ -336,11 +356,11 @@ async function sendCode(btn) {
   btn.disabled = true;
   btn.textContent = '发送中…';
   try {
-    const pow = await solveCaptcha(mode === 'reset' ? 'reset' : 'signup');
+    const captcha = await solveCaptcha();
     const res = await authApi.sendCode({
       email,
       purpose: mode === 'reset' ? 'reset' : 'signup',
-      pow,
+      captcha,
       honeypot: root.querySelector('[name="website"]')?.value || '',
     });
     lastEmail = email;
@@ -408,8 +428,8 @@ async function onSubmit(e) {
     if (!data.password) return showErr('password', '请输入密码');
     setBusy(true, '登录中…');
     try {
-      const pow = await solveCaptcha('login');
-      const res = await authApi.login({ email, password: data.password, pow, honeypot: hp });
+      const captcha = await solveCaptcha();
+      const res = await authApi.login({ email, password: data.password, captcha, honeypot: hp });
       await afterAuth(res, 'login');
     } catch (err) {
       handleErr(err);

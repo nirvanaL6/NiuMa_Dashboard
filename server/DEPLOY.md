@@ -70,7 +70,8 @@ curl -s $BASE/api/nope            # → JSON 404，不应返回 HTML
 |---|---|---|
 | `DEV_MODE` | `wrangler.toml` | 生产必须 `"false"`。为 `true` 时验证码会回显给任何人 |
 | `ALLOWED_ORIGINS` | `wrangler.toml` | 同域部署无需改；前端放别的域名时把该域名加进去 |
-| `POW_DIFFICULTY` | `wrangler.toml` | 人机验证难度（前导 0 比特），默认 16 |
+| `TURNSTILE_SITE_KEY` | `wrangler.toml` | Turnstile 站点密钥（公开）。仓库里默认是官方**测试**密钥，上生产务必换成自己域名的 |
+| `TURNSTILE_SECRET_KEY` | secret | Turnstile 密钥。site key 还是测试密钥时可省略；换成正式 site key 后**必填** |
 | `DAILY_WRITES_LIMIT` | `wrangler.toml` | 单用户每日写入上限，默认 300 |
 | `MAIL_FROM` | `wrangler.toml` | 发件人，需与 Resend 已验证域名一致 |
 | `CODE_PEPPER` | secret | **必填**，验证码/令牌哈希密钥 |
@@ -181,20 +182,36 @@ curl -X PUT -H "Authorization: Bearer $TOKEN" -H "content-type: application/json
 
 ---
 
-## 人机验证与验证码的绑定关系（migrations/0002）
+## 人机验证：Cloudflare Turnstile（migrations/0003）
 
-PoW 挑战是**一次性**的（`pow_challenges.consumed_at`）。产品要求「注册时在点发送验证码时做人机验证，
-登录时才在提交时做」，所以不能两处都 `consumePow`：前端只解一次挑战，第二次必然失败。
+人机验证已从自研 PoW 换成 Turnstile。前端只负责拿一次性 token（`src/api.js` 的
+`runTurnstile`），服务端拿 token 去 `https://challenges.cloudflare.com/turnstile/v0/siteverify`
+换结果（`server/src/api.js` 的 `verifyTurnstile`）——不落库、不吃 D1 额度。
 
-现在的约定：
+### 申请与配置
+
+1. Cloudflare 控制台 → **Turnstile** → 添加站点，域名填 `desk.763988.xyz`，
+   Widget Mode 选 **Managed**（绝大多数用户无感通过）
+2. 把 **Site Key** 填进 `wrangler.toml` 的 `TURNSTILE_SITE_KEY`
+3. `npx wrangler secret put TURNSTILE_SECRET_KEY` 写入 **Secret Key**
+4. `npm run deploy`
+
+> 仓库里保留的是官方测试密钥 `1x00000000000000000000AA`（始终通过），
+> 没申请正式密钥也能完整跑通链路。但它在生产等于没验证，**上线前必须替换**。
+> 用正式 site key 却漏配 secret 时，接口会返回 `server_misconfigured`（503）而不是悄悄放行。
+
+### token 与验证码的绑定关系
+
+Turnstile 的 token 是一次性的、300 秒过期，所以「注册提交」时不可能再解一次。
+约定是：一次验证绑定一条验证码。
 
 | 场景 | 人机验证时机 | 服务端校验点 |
 | --- | --- | --- |
-| 注册 | 点「获取验证码」 | `sendCode` 里 `consumePow`，成功后把 `email_codes.pow_verified = 1` |
-| 注册提交 | 不再验证 | `signup` 校验**该验证码记录的** `pow_verified`，不要求 `pow` |
+| 注册 | 点「获取验证码」 | `sendCode` 里 `verifyTurnstile`，成功后写 `email_codes.captcha_ok = 1` |
+| 注册提交 | 不再验证 | `signup` 校验**该验证码记录的** `captcha_ok` |
 | 找回密码 | 点「获取验证码」 | 同上 |
-| 找回密码提交 | 不再验证 | `verifyResetCode` 校验 `pow_verified` |
-| 登录 | 点「登录」 | `login` 里 `consumePow`，每次都要现解 |
+| 找回密码提交 | 不再验证 | `verifyResetCode` 校验 `captcha_ok` |
+| 登录 | 点「登录」 | `login` 里 `verifyTurnstile`，每次都要现拿 token |
 
 一次验证绑定一条验证码，仍然能挡住「刷接口滥发邮件」。升级旧库需要执行：
 

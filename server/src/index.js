@@ -28,7 +28,7 @@ function cors(req, env) {
 }
 
 const ROUTES = [
-  ['POST', '/api/auth/pow', (env, req, body) => api.issuePow(env, req, body?.purpose || 'signup')],
+  ['GET', '/api/auth/captcha-config', (env) => api.captchaConfig(env)],
   ['POST', '/api/auth/code', (env, req, body) => api.sendCode(env, req, body)],
   ['POST', '/api/auth/signup', (env, req, body) => api.signup(env, req, body)],
   ['POST', '/api/auth/login', (env, req, body) => api.login(env, req, body)],

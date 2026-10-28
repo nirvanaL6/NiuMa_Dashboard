@@ -10,6 +10,8 @@
  */
 import { icon } from './icons.js';
 import * as store from './store.js';
+import { confirmDialog } from './dialog.js';
+import { renderSelectField, renderDateTimeField, fcValue, mountFormControls, closeAllFc } from './form-controls.js';
 import {
   QUADRANTS, QUAD_IDS, quadOf, freeTags, setQuadrant,
   toLocalInput, dayKey, uid,
@@ -43,10 +45,30 @@ let onSaved = null;
 export function mountTodo(hostEl, { onChange } = {}) {
   host = hostEl;
   onSaved = onChange || null;
+  mountFormControls();
   bindDrag();
 }
 
 const notify = () => { if (onSaved) onSaved(); };
+/** 局部变更通知：只改 DOM，不触发整页重绘（勾选完成这类高频操作） */
+const notifyPatch = () => { if (onSaved) onSaved({ patchOnly: true }); };
+
+/**
+ * 只切换一条待办的完成态 DOM，不重绘整个视图。
+ *
+ * 之前勾选一条待办会把整个 stage 重新 innerHTML 一遍（概览视图是 42 个日期格 +
+ * 上百个节点），大屏上能明显感到掉帧，拖完/勾完还要等一会儿才能继续操作。
+ * 完成态只影响 class 与 aria，就地改即可。
+ */
+function patchTodoDom(id, done) {
+  document.querySelectorAll(`[data-todo-row="${CSS.escape(id)}"]`).forEach((el) => {
+    el.classList.toggle('is-done', done);
+  });
+  document.querySelectorAll(`[data-toggle-todo="${CSS.escape(id)}"]`).forEach((b) => {
+    b.setAttribute('aria-checked', String(done));
+    b.setAttribute('aria-label', done ? '标记未完成' : '标记完成');
+  });
+}
 
 /* =========================================================
    编辑器：项目 / 待办共用一套表单
@@ -78,14 +100,19 @@ function renderEditor() {
       <div class="ed__body">
         ${fieldRow('标题', `<input class="ed__input" id="edTitleInput" maxlength="80" placeholder="${isProject ? '例：工作台 v2 重构' : '例：提交需求评审材料'}" value="${escAttr(draft.title)}" />`)}
 
-        ${!isProject ? fieldRow('所属项目', `<select class="ed__input" id="edProject">
-            <option value="">不归属项目（独立待办）</option>
-            ${projects().map((p) => `<option value="${escAttr(p.id)}" ${draft.projectId === p.id ? 'selected' : ''}>${escHtml(p.title)}</option>`).join('')}
-          </select>`) : ''}
+        ${!isProject ? fieldRow('所属项目', renderSelectField({
+          id: 'edProject',
+          value: draft.projectId || '',
+          placeholder: '不归属项目（独立待办）',
+          options: [
+            { value: '', label: '不归属项目（独立待办）' },
+            ...projects().map((p) => ({ value: p.id, label: p.title })),
+          ],
+        })) : ''}
 
-        ${fieldRow('截止时间', `<input class="ed__input" type="datetime-local" id="edDue" value="${escAttr(toLocalInput0(draft.due))}" />`, '年月日时分')}
+        ${fieldRow('截止时间', renderDateTimeField({ id: 'edDue', value: draft.due || '' }), '年月日时分')}
 
-        ${fieldRow('计划日期', `<input class="ed__input" type="datetime-local" id="edPlan" value="${escAttr(toLocalInput0(draft.planAt))}" />`, '决定它出现在概览的哪一天')}
+        ${fieldRow('计划日期', renderDateTimeField({ id: 'edPlan', value: draft.planAt || '' }), '决定它出现在概览的哪一天')}
 
         ${fieldRow('四宫格', `<div class="ed__quads" id="edQuads">
             ${QUADRANTS.map((x) => `<button type="button" class="ed__quad ${q === x.id ? 'is-on' : ''}" data-quad-pick="${x.id}" style="--q:${x.accent}">
@@ -114,19 +141,12 @@ function renderEditor() {
   </div>`;
 }
 
-/** datetime-local 需要 'YYYY-MM-DDTHH:mm'；只到日的补 09:00 */
-function toLocalInput0(v) {
-  if (!v) return '';
-  const s = String(v);
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return `${s}T09:00`;
-  return s.slice(0, 16);
-}
-
 const escHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const escAttr = escHtml;
 
 export function openEditor(kind, id = '', preset = {}) {
   if (!host) return;
+  closeAllFc(); // 避免上一个编辑器残留的浮层盖在新弹窗上
   const base = id
     ? resolve(kind, id)?.item
     : { title: '', tags: [], due: '', planAt: '', projectId: preset.projectId || '' };
@@ -147,6 +167,7 @@ export function openEditor(kind, id = '', preset = {}) {
 }
 
 export function closeEditor() {
+  closeAllFc();
   editing = null;
   if (host) host.innerHTML = '';
 }
@@ -154,8 +175,9 @@ export function closeEditor() {
 function readForm() {
   const d = editing.draft;
   d.title = host.querySelector('#edTitleInput')?.value.trim() || '';
-  d.due = host.querySelector('#edDue')?.value || '';
-  d.planAt = host.querySelector('#edPlan')?.value || '';
+  // 日期/项目是自绘控件，真实值在隐藏 input 里（见 src/form-controls.js）
+  d.due = fcValue(host, 'edDue');
+  d.planAt = fcValue(host, 'edPlan');
   const proj = host.querySelector('#edProject');
   if (proj) d.projectId = proj.value;
   return d;
@@ -280,6 +302,43 @@ function applyDrop(kind, id, target, value) {
   return { ok: false };
 }
 
+/**
+ * 删除条目（编辑器内的「删除」）。
+ * 用应用内的确认弹窗而非原生 confirm：原生弹窗与界面风格割裂，
+ * 且支持不了「不再提示」——而删除是高频重复操作，每次都问一遍很烦。
+ */
+async function deleteEntry(kind, id) {
+  if (kind === 'project') {
+    const own = todos().filter((t) => t.projectId === id).length;
+    const ok = await confirmDialog({
+      title: '删除这个项目？',
+      desc: own ? `项目下的 ${own} 条待办会一起删除，且无法恢复。` : '删除后无法恢复。',
+      confirmText: '删除项目',
+      danger: true,
+      onceKey: 'delete-project',
+      onceLabel: '删除项目时不再提示',
+    });
+    if (!ok) return;
+    saveProjects(projects().filter((p) => p.id !== id));
+    saveTodos(todos().filter((t) => t.projectId !== id));
+    toast?.(`${icon('trash')} 项目已删除`);
+  } else {
+    const ok = await confirmDialog({
+      title: '删除这条待办？',
+      desc: '删除后无法恢复。',
+      confirmText: '删除',
+      danger: true,
+      onceKey: 'delete-todo',
+      onceLabel: '删除待办时不再提示',
+    });
+    if (!ok) return;
+    saveTodos(todos().filter((t) => t.id !== id));
+    toast?.(`${icon('trash')} 待办已删除`);
+  }
+  closeEditor();
+  notify();
+}
+
 /* =========================================================
    事件委托
    ========================================================= */
@@ -296,6 +355,21 @@ export function bindTodoEvents({ go, toast: t }) {
     const toProj = e.target.closest('[data-add-todo-to]');
     if (toProj) return openEditor('todo', '', { projectId: toProj.dataset.addTodoTo });
 
+    /* ---- 勾选完成（列表 / 四宫格 / 概览通用） ----
+       必须排在「点击条目打开编辑器」之前：列表里整行可点（data-edit-todo 挂在 li 上），
+       勾选按钮是它的子节点，先判 edit 会把打勾也变成打开编辑器。 */
+    const tg = e.target.closest('[data-toggle-todo]');
+    if (tg) {
+      const id = tg.dataset.toggleTodo;
+      const t = findTodo(id);
+      if (!t) return;
+      const next = !t.done;
+      saveTodos(todos().map((x) => (x.id === id ? { ...x, done: next } : x)));
+      patchTodoDom(id, next);
+      notifyPatch();
+      return;
+    }
+
     const editT = e.target.closest('[data-edit-todo]');
     if (editT) return openEditor('todo', editT.dataset.editTodo);
     const editP = e.target.closest('[data-edit-project]');
@@ -309,18 +383,7 @@ export function bindTodoEvents({ go, toast: t }) {
     if (e.target.closest('[data-ed-del]')) {
       const { kind, id } = editing || {};
       if (!kind || !id) return;
-      if (kind === 'project') {
-        const own = todos().filter((t) => t.projectId === id).length;
-        if (!confirm(`删除项目会同时删除其下 ${own} 条待办，确定？`)) return;
-        saveProjects(projects().filter((p) => p.id !== id));
-        saveTodos(todos().filter((t) => t.projectId !== id));
-      } else {
-        if (!confirm('确定删除这条待办？')) return;
-        saveTodos(todos().filter((t) => t.id !== id));
-      }
-      closeEditor();
-      notify();
-      toast?.(`${icon('trash')} 已删除`);
+      void deleteEntry(kind, id);
       return;
     }
 
@@ -359,17 +422,6 @@ export function bindTodoEvents({ go, toast: t }) {
         editing.draft = keep;
       }
       if (inp) inp.value = '';
-      return;
-    }
-
-    /* ---- 勾选完成 ---- */
-    const tg = e.target.closest('[data-toggle-todo]');
-    if (tg) {
-      const id = tg.dataset.toggleTodo;
-      const t = findTodo(id);
-      if (!t) return;
-      saveTodos(todos().map((x) => (x.id === id ? { ...x, done: !x.done } : x)));
-      notify();
       return;
     }
 

@@ -12,6 +12,7 @@ import * as store from './store.js';
 import { authApi, stateApi, getToken, setToken, ApiError } from './api.js';
 import { mountAuth, refreshAccountUI, openAuth, closeAuth, currentUser as authUser, bootstrapSession, logout, setUser } from './auth.js';
 import { mountTodo, bindTodoEvents } from './todo-app.js';
+import { confirmDialog } from './dialog.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -51,33 +52,36 @@ function renderPanel() {
   $('#panelTitle').textContent = m.title;
   $('#panelDesc').textContent = m.desc;
 
-  // 分段控件：所有按钮等宽（滑块宽度可预测），文字截断时用 title 兜底
+const escHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  // 分段控件：按钮按内容宽度排布（见 styles.css），长标签不再被压成「项目&…」
   subNav.innerHTML = `<span class="seg-nav__thumb" aria-hidden="true"></span>${m.views.map((v, i) => `
     <button type="button" role="tab" data-view="${v.id}" aria-selected="${v.id === state.viewId}" tabindex="${v.id === state.viewId ? 0 : -1}"
-      title="${v.label}：${v.hint}（${i + 1}）">
-      ${icon(v.icon, 13)}<span class="lbl">${v.label}</span>
+      title="${escHtml(v.label)}：${escHtml(v.hint)}（${i + 1}）">
+      ${icon(v.icon, 13)}<span class="lbl">${escHtml(v.label)}</span>
     </button>`).join('')}`;
   segThumb = subNav.querySelector('.seg-nav__thumb');
-  placeThumb(true);
+  // 新按钮刚插入 DOM，字体/布局可能还没稳定，延一帧再量一次宽度
+  scheduleThumb(60);
+  watchSubNavSize();
 }
 
 /**
- * 滑块对齐当前选中项
- * init=true：布局刚变（折叠/断点切换），先关过渡再落位，避免从旧位置横穿整栏
+ * 滑块对齐当前选中项。
+ *
+ * 历史坑：这里曾经在 init 分支里自我调度 setTimeout 递归校正，每约 520ms 调用
+ * 数翻倍，十秒后堆积上百万个定时器 → 内存暴涨、页面无响应。现在改由
+ * ResizeObserver 驱动：只在导航尺寸真发生变化时才重排，且校正有且只有一个
+ * 定时器句柄，绝不自我递归。
  */
-function placeThumb(init = false) {
+function placeThumb() {
   // 手机端纵向滚动时左栏不可见，跳过测量
   if (subNav.offsetParent === null) return;
-  // 布局动画中量到的宽度是中间态，等过渡结束再落位一次
-  if (init) {
-    clearTimeout(placeThumb.timer);
-    placeThumb.timer = setTimeout(() => placeThumb(true), 460);
-  }
   const active = subNav.querySelector('[data-view][aria-selected="true"]');
   if (!active || !segThumb) return;
-  const vertical = getComputedStyle(subNav).flexDirection.startsWith("column");
+  const vertical = getComputedStyle(subNav).flexDirection.startsWith('column');
 
-  if (init) segThumb.style.transition = 'none';
+  segThumb.style.transition = 'none';
   if (vertical) {
     segThumb.style.width = 'auto';
     segThumb.style.transform = `translateX(0) translateY(${active.offsetTop - 5}px)`;
@@ -95,16 +99,34 @@ function placeThumb(init = false) {
   }
   // 窄栏 + 3 个选项时按钮只剩 ~60px，滑块紧贴文字，改用细描边避免糊成一团
   segThumb.classList.toggle('tight', active.offsetWidth < 78);
-  if (init) {
-    void segThumb.offsetWidth;
-    // 弹层/布局过渡结束后再恢复滑块动画，避免中间态宽度被写死
-    setTimeout(() => {
-      segThumb.style.transition = '';
-      placeThumb(true);
-    }, 520);
-    // 兜底：字体/弹层/图片加载完成后再校正一次
-    setTimeout(() => placeThumb(true), 1600);
-  }
+  // 强制回流后再恢复过渡，避免从上一位置横穿整栏
+  void segThumb.offsetWidth;
+  segThumb.style.transition = '';
+}
+
+/**
+ * 请求一次滑块校正。合并同一帧内的多次请求，且只保留一个待执行句柄。
+ * @param {number} delay 延迟毫秒；用于等布局/字体稳定
+ */
+let thumbTimer = 0;
+function scheduleThumb(delay = 0) {
+  clearTimeout(thumbTimer);
+  thumbTimer = setTimeout(placeThumb, delay);
+}
+
+/** 导航尺寸变化（折叠、断点、字体加载）时重排滑块，替代原先的轮询 */
+let subNavObserver = null;
+function watchSubNavSize() {
+  subNavObserver?.disconnect();
+  if (typeof ResizeObserver === 'undefined') return;
+  let last = '';
+  subNavObserver = new ResizeObserver(() => {
+    const key = `${subNav.offsetWidth}x${subNav.offsetHeight}`;
+    if (key === last) return; // 只关心尺寸真变化，避免子项重排触发的抖动
+    last = key;
+    scheduleThumb(0);
+  });
+  subNavObserver.observe(subNav);
 }
 
 /* ---------------- 视图渲染 + 转场 ---------------- */
@@ -353,12 +375,37 @@ const tickers = new Set();
 /** 暂停开始时冻结的已计薪秒数 */
 let frozenAt = 0;
 
+/**
+ * 读秒驱动。
+ *
+ * 两个前提，缺一不可：
+ *  1) 没有订阅者就停掉 rAF——原先常驻每帧空转，即使停在待办页也在跑，
+ *     白占主线程，也让浏览器进不了空闲。
+ *  2) 页面切到后台时停掉——rAF 本身会被节流，但回调与 animate 仍会排队。
+ *
+ * 有订阅者或页面回到前台时再启动。
+ */
+let rafId = 0;
 function tick() {
+  rafId = 0;
   const base = payPaused ? frozenAt : earnedSeconds();
   const value = base * PER_SECOND;
   tickers.forEach((fn) => fn(value));
-  requestAnimationFrame(tick);
+  if (tickers.size && !document.hidden) rafId = requestAnimationFrame(tick);
 }
+
+function ensureTicking() {
+  if (rafId || !tickers.size || document.hidden) return;
+  rafId = requestAnimationFrame(tick);
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+  } else {
+    ensureTicking();
+  }
+});
 
 function registerTicker(root, fn) {
   const wrapped = (v) => {
@@ -367,6 +414,7 @@ function registerTicker(root, fn) {
   };
   tickers.add(wrapped);
   fn(earnedSeconds() * PER_SECOND);
+  ensureTicking();
 }
 
 function pausePay(next) {
@@ -417,6 +465,9 @@ function startSalaryClock(root) {
   if (bars && !bars.childElementCount) {
     bars.innerHTML = Array.from({ length: 8 }, () => '<i></i>').join('');
   }
+  // 每帧都 new 一个 WAAPI 动画对象 = 每秒 60 个，GC 压力直接体现在内存曲线上。
+  // 只在「显示的整数真的变了」时才播一次跳动，肉眼效果一致，开销降两个数量级。
+  let lastWhole = -1;
   registerTicker(root, (v) => {
     const int = root.querySelector('[data-live="salary-int"]');
     const frac = root.querySelector('[data-live="salary-frac"]');
@@ -424,7 +475,8 @@ function startSalaryClock(root) {
     const whole = Math.floor(v);
     int.textContent = whole.toLocaleString('zh-CN');
     frac.textContent = '.' + String(Math.floor((v - whole) * 100)).padStart(2, '0');
-    if (state.prefs.payTick) {
+    if (state.prefs.payTick && whole !== lastWhole) {
+      lastWhole = whole;
       int.animate([{ transform: 'translateY(0)' }, { transform: 'translateY(-1.5px)' }, { transform: 'translateY(0)' }],
         { duration: 220, easing: 'cubic-bezier(.16,1,.3,1)' });
     }
@@ -448,8 +500,6 @@ function startSalaryClock(root) {
 }
 
 requestAnimationFrame(tick);
-
-/* ---------------- 全局设置浮层 ---------------- */
 const mask = $('#sheetMask');
 const sheetBody = $('#sheetBody');
 
@@ -632,11 +682,12 @@ document.addEventListener('click', (e) => {
 });
 
 /* ---------------- 尺寸变化 ---------------- */
-// 分段导航在窄屏会隐藏文字、变宽/变窄，滑块需要重新量一次尺寸
+// 分段导航在窄屏会隐藏文字、变宽/变窄，滑块需要重新量一次尺寸。
+// 尺寸变化由 ResizeObserver 统一捕获，这里只补窗口缩放带来的 CSS 断点切换。
 let resizeTimer = 0;
 window.addEventListener('resize', () => {
   clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => placeThumb(true), 120);
+  resizeTimer = setTimeout(() => scheduleThumb(0), 120);
 });
 
 /* ---------------- 备份：下载 / 导入 / 重置 ---------------- */
@@ -680,7 +731,12 @@ function pickBackupFile() {
       }
       const summary = `${(data.todos || []).length} 条待办 · ${Object.keys(data.claims || {}).length} 张券`;
       const when = parsed.exportedAt ? new Date(parsed.exportedAt).toLocaleString('zh-CN', { hour12: false }) : '未知时间';
-      if (!confirm(`将用这份备份覆盖当前数据：\n\n${summary}\n导出时间：${when}\n\n当前数据会先留一份快照，可随时在「恢复备份」的撤销里找回。继续？`)) return;
+      const ok = await confirmDialog({
+        title: '用备份覆盖当前数据？',
+        desc: `${summary}\n导出时间：${when}\n\n当前数据会先留一份快照，可随时在「恢复备份」的撤销里找回。`,
+        confirmText: '覆盖并恢复',
+      });
+      if (!ok) return;
       localStorage.setItem('wd-data-before-import', JSON.stringify(store.getData()));
       store.replaceData(data);
       renderStage('forward', false);
@@ -724,7 +780,12 @@ async function showCloudHistory() {
 }
 
 async function doLogout() {
-  if (!confirm('退出后本机数据保留，但不再自动同步云端。确定退出？')) return;
+  const ok = await confirmDialog({
+    title: '退出登录？',
+    desc: '本机数据会保留，但不再自动同步云端。',
+    confirmText: '退出',
+  });
+  if (!ok) return;
   await logout();
   closeSheet();
   toast(`${icon('logout')} 已退出，切换为免登录模式`);
@@ -756,7 +817,13 @@ document.addEventListener('click', async (e) => {
     if (kind === 'import') pickBackupFile();
     if (kind === 'history') showCloudHistory();
     if (kind === 'reset') {
-      if (!confirm('重置会用示例数据覆盖当前待办与券状态。建议先下载备份。继续？')) return;
+      const ok = await confirmDialog({
+        title: '重置为示例数据？',
+        desc: '会用示例数据覆盖当前待办与券状态。建议先下载备份。',
+        confirmText: '重置',
+        danger: true,
+      });
+      if (!ok) return;
       localStorage.setItem('wd-data-before-reset', JSON.stringify(store.getData()));
       store.replaceData(seedData());
       renderStage('forward', false);
@@ -787,7 +854,8 @@ document.addEventListener('keydown', (e) => {
 });
 
 /* ---------------- Toast ---------------- */
-function toast(html, ms = 2400) {
+/** 默认 2 秒：信息类提示停留久了会挡住内容区，也更符合「瞥一眼就够」的定位 */
+function toast(html, ms = 2000) {
   const el = document.createElement('div');
   el.className = 'toast';
   el.setAttribute('role', 'status');
@@ -824,8 +892,16 @@ if (!todoEditor) {
   document.body.appendChild(todoEditor);
 }
 mountTodo(todoEditor, {
-  // 数据变化后只重绘舞台，保持模块/视图状态与滚动容器不变
-  onChange: () => { renderStage('forward', false); refreshTodoBadge(); },
+  /**
+   * 数据变化后重绘舞台。
+   * opts.patchOnly = true 表示「DOM 已经就地更新过了，不用重绘」——勾选完成
+   * 走这条路径，避免每次打勾都把整个视图重排一遍（概览是 42 个日期格）。
+   * 两种情况都要刷角标，因为未完成数变了。
+   */
+  onChange: (opts) => {
+    if (!opts?.patchOnly) renderStage('forward', false);
+    refreshTodoBadge();
+  },
 });
 const todoApi = bindTodoEvents({ go, toast });
 provideTodoEditor(todoApi.openEditor);
@@ -901,7 +977,7 @@ setTimeout(() => {
 }, 900);
 
 // 字体加载完成后字宽变化，滑块需要重新对齐
-document.fonts?.ready.then(() => placeThumb(true));
+document.fonts?.ready.then(() => scheduleThumb(0));
 
 window.addEventListener('hashchange', () => {
   const [m, v] = decodeURIComponent(location.hash.slice(1)).split('/');

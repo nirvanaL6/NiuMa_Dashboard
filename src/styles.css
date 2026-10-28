@@ -331,7 +331,10 @@ h1, h2, h3, h4, p { margin: 0; }
   position: relative; display: flex; gap: 0; padding: 5px;
   border-radius: 14px; background: var(--surface); box-shadow: var(--sh-in);
   border: 1px solid rgba(99, 102, 241, .16);
+  /* 极窄时宁可横向滚动，也不把长标签压成「项目&…」 */
+  max-width: 100%; overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
 }
+.seg-nav::-webkit-scrollbar { display: none; }
 .seg-nav__thumb {
   position: absolute; top: 5px; left: 5px; width: 0; height: calc(100% - 10px);
   border-radius: 10px; background: var(--primary-tint);
@@ -343,9 +346,11 @@ h1, h2, h3, h4, p { margin: 0; }
 }
 .seg-nav__thumb.is-init { transition: none; }
 .seg-nav__thumb.tight { border-width: 1px; border-radius: 9px; }
-/* 横排图标态按钮等宽，滑块宽度交给 JS 精确计算，避免百分比宽度在折叠动画中抖动 */
+/* 横排按钮按内容宽度排布：等宽（flex:1 1 0）会把「项目&待办」这类长标签压成
+   「项目&…」，看不出是哪个视图。滑块由 JS 读 offsetLeft/offsetWidth 定位，
+   不等宽一样能精确对齐。 */
 .seg-nav button {
-  position: relative; z-index: 1; flex: 1 1 0; min-width: 0;
+  position: relative; z-index: 1; flex: 0 0 auto; min-width: 0;
   height: 32px; padding: 0 12px;
   font-size: 12.5px; font-weight: 650; color: var(--ink-3);
   border-radius: 10px; white-space: nowrap;
@@ -783,6 +788,7 @@ h1, h2, h3, h4, p { margin: 0; }
   .page-head .panel__desc { display: none; }
   .panel__title { font-size: 18px; }
   .seg-nav { flex: 1; }
+  /* 手机端隐藏图标后空间够用，回到等宽铺满，视觉更整齐 */
   .seg-nav button { flex: 1 1 0; padding: 0 6px; }
   .seg-nav button svg { display: none; }
   .navrow__new { display: none; }
@@ -875,6 +881,11 @@ h1, h2, h3, h4, p { margin: 0; }
   font-size: 11.5px; color: var(--ink-3);
 }
 .auth-human svg { color: var(--primary); flex: none; }
+
+/* Turnstile 挂载点：只在验证时展开，避免常态下多出一块空白 */
+.auth-ts { margin-top: 10px; min-height: 65px; }
+.auth-ts[hidden] { display: none; }
+.auth-ts > div, .auth-ts iframe { width: 100% !important; }
 
 .auth-foot {
   display: flex; align-items: center; justify-content: space-between;
@@ -1060,7 +1071,10 @@ h1, h2, h3, h4, p { margin: 0; }
   font-size: 12.5px; font-weight: 600; line-height: 1.45; color: var(--ink);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.td.is-done .td__title { color: var(--ink-4); text-decoration: line-through; }
+/* 完成态只靠前面的勾选框表达：划掉标题会让整行读起来像「已废弃」，
+   而且划掉的标题更难扫读。这里只做去色，不做删除线。 */
+.td.is-done .td__title { color: var(--ink-4); }
+.td.is-done .td__meta { opacity: .7; }
 .td.is-overdue .td__title { color: var(--rose); }
 
 .td__meta {
@@ -1150,13 +1164,36 @@ h1, h2, h3, h4, p { margin: 0; }
 .qi:hover { transform: translateY(-1px); box-shadow: var(--sh-sm); }
 .qi:active { cursor: grabbing; }
 .qi__badge { flex: none; display: grid; place-items: center; color: var(--primary); }
+
+/* 四宫格 / 概览里的完成勾选：做得比列表里更小，但仍保持 24px 级的可点区域，
+   靠伪元素扩大命中范围，免得误触整行（整行是「点开编辑」） */
+.qi__check, .de__check {
+  flex: none; position: relative; border-radius: 4px;
+  display: grid; place-items: center; color: transparent;
+  background: var(--surface); box-shadow: var(--sh-in-sm);
+  cursor: pointer;
+  transition: color var(--dur-1), background var(--dur-1);
+}
+.qi__check { width: 14px; height: 14px; }
+.de__check {
+  width: calc(13px * var(--ov-scale, 1)); height: calc(13px * var(--ov-scale, 1));
+  border-radius: 3px;
+}
+.qi__check::after, .de__check::after {
+  content: ''; position: absolute; inset: -6px -5px; border-radius: 8px;
+}
+.qi__check:hover, .de__check:hover { box-shadow: var(--sh-in-sm), 0 0 0 3px rgba(99, 102, 241, .16); }
+.qi__check[aria-checked="true"], .de__check[aria-checked="true"] {
+  color: #fff; background: var(--primary);
+}
+.qi__check svg, .de__check svg { display: block; }
 .qi__txt {
   flex: 1; min-width: 0; font-size: 11.5px; font-weight: 600; line-height: 1.4;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .qi__n { font-size: 9.5px; font-weight: 750; color: var(--ink-4); flex: none; }
 .qi__due { font-size: 9.5px; color: var(--ink-4); flex: none; font-variant-numeric: tabular-nums; }
-.qi.is-done .qi__txt { color: var(--ink-4); text-decoration: line-through; }
+.qi.is-done .qi__txt { color: var(--ink-4); }
 .qi--pj {
   background: color-mix(in srgb, var(--primary) 9%, var(--surface-raised));
 }
@@ -1293,8 +1330,7 @@ h1, h2, h3, h4, p { margin: 0; }
 .de__txt {
   min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.de.is-done { opacity: .55; }
-.de.is-done .de__txt { text-decoration: line-through; }
+.de.is-done { opacity: .62; }
 .de--more { background: none; color: var(--ink-4); font-weight: 650; justify-content: center; padding: 1px 0; }
 .de__time { flex: none; font-size: calc(9px * var(--ov-scale, 1)); color: var(--ink-4); font-variant-numeric: tabular-nums; }
 .day__empty {
@@ -1389,6 +1425,111 @@ select.ed__input { appearance: none; cursor: pointer; }
 .ed__del { color: var(--rose); }
 .ed__del:hover { color: var(--rose); box-shadow: var(--sh-sm); }
 .ed__err { flex: 1; font-size: 11px; font-weight: 650; color: var(--rose); text-align: right; }
+
+/* ---------- 6. 自绘表单控件（见 src/form-controls.js） ---------- */
+.fc { position: relative; }
+.fc__field {
+  width: 100%; height: 36px; padding: 0 11px; gap: 7px;
+  display: inline-flex; align-items: center;
+  border: 0; border-radius: var(--r-xs);
+  background: var(--surface); box-shadow: var(--sh-in-sm);
+  font-size: 12.5px; font-weight: 600; color: var(--ink); text-align: left;
+  transition: box-shadow var(--dur-2) var(--ease-out);
+}
+.fc__field:hover { box-shadow: var(--sh-in-sm), var(--sh-xs); }
+.fc.is-open .fc__field { box-shadow: var(--sh-in-sm), var(--sh-focus); }
+.fc__val { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fc__val.is-ph { color: var(--ink-4); font-weight: 550; }
+.fc__ico { flex: none; color: var(--ink-3); display: grid; place-items: center; }
+.fc__caret {
+  flex: none; display: grid; place-items: center; color: var(--ink-3);
+  transition: transform var(--dur-2) var(--ease-out);
+}
+.fc.is-open .fc__caret { transform: rotate(180deg); color: var(--primary); }
+
+.fc__pop {
+  position: fixed; z-index: 90; min-width: 180px; max-height: 320px; overflow-y: auto;
+  padding: 6px; border-radius: var(--r-sm);
+  background: var(--surface); box-shadow: var(--sh-lg);
+  border: 1px solid var(--line-strong);
+  animation: fcIn var(--dur-2) var(--ease-out);
+}
+@keyframes fcIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.fc__pop[hidden] { display: none; }
+
+.fc__opt {
+  display: flex; align-items: center; width: 100%; min-height: 30px; padding: 6px 9px;
+  border-radius: var(--r-xs); font-size: 12.5px; font-weight: 600; color: var(--ink-2);
+  text-align: left; transition: background var(--dur-1), color var(--dur-1);
+}
+.fc__opt:hover { background: var(--surface-raised); color: var(--ink); }
+.fc__opt.is-on { color: var(--primary-deep); background: var(--primary-tint); font-weight: 700; }
+
+/* 日历 */
+/* 日历是定高内容，不该出现内部滚动条——否则时间步进器会被裁在可视区外 */
+.fc__pop--cal, .fc__pop--time { width: 246px; padding: 10px; max-height: none; overflow: visible; }
+.cal__nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.cal__nav b { font-size: 12.5px; font-weight: 800; letter-spacing: -.01em; }
+.cal__nav-btn {
+  width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center;
+  color: var(--ink-3); transition: color var(--dur-1), background var(--dur-1);
+}
+.cal__nav-btn:hover { color: var(--primary); background: var(--surface-raised); }
+.cal__wd { display: grid; grid-template-columns: repeat(7, 1fr); margin-bottom: 4px; }
+.cal__wd span { text-align: center; font-size: 10px; font-weight: 700; color: var(--ink-4); }
+.cal__grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.cal__cell {
+  height: 28px; border-radius: 7px; display: grid; place-items: center;
+  font-size: 11.5px; font-weight: 650; color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+  transition: background var(--dur-1), color var(--dur-1);
+}
+.cal__cell.is-void { pointer-events: none; }
+.cal__cell:hover { background: var(--surface-raised); }
+.cal__cell.is-today { color: var(--primary); font-weight: 800; }
+.cal__cell.is-on { color: #fff; background: var(--primary); box-shadow: 2px 2px 6px rgba(79, 70, 229, .28); }
+
+.cal__time { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 10px; }
+.cal__time--big { margin-top: 2px; }
+.cal__step {
+  display: inline-flex; align-items: center; gap: 2px; padding: 2px;
+  border-radius: var(--r-xs); background: var(--surface); box-shadow: var(--sh-in-sm);
+}
+.cal__step-btn {
+  width: 24px; height: 24px; border-radius: 6px; display: grid; place-items: center;
+  font-size: 13px; font-weight: 800; color: var(--ink-3);
+  transition: color var(--dur-1), background var(--dur-1);
+}
+.cal__step-btn:hover { color: var(--primary); background: var(--surface-raised); }
+.cal__step-val {
+  min-width: 26px; text-align: center; font-size: 13px; font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.cal__colon { font-size: 14px; font-weight: 800; color: var(--ink-3); }
+.cal__foot { display: flex; justify-content: flex-end; gap: 6px; margin-top: 10px; }
+.dlg { max-width: 380px; }
+.dlg .ed__head h3.is-danger svg { color: var(--rose); }
+.dlg__desc {
+  margin: 0; font-size: 12.5px; font-weight: 600; line-height: 1.65; color: var(--ink-2);
+  white-space: pre-line;
+}
+.dlg__once {
+  display: inline-flex; align-items: center; gap: 8px; align-self: flex-start;
+  margin-top: 2px; cursor: pointer; user-select: none;
+  font-size: 11.5px; font-weight: 650; color: var(--ink-3);
+}
+.dlg__once input { position: absolute; opacity: 0; width: 0; height: 0; }
+.dlg__box {
+  width: 17px; height: 17px; border-radius: 5px; display: grid; place-items: center; flex: none;
+  color: transparent; background: var(--surface); box-shadow: var(--sh-in-sm);
+  transition: color var(--dur-1), background var(--dur-1);
+}
+.dlg__once input:checked + .dlg__box { color: #fff; background: var(--primary); }
+.dlg__once input:focus-visible + .dlg__box { box-shadow: var(--sh-in-sm), var(--sh-focus); }
+
+.btn--danger { color: #fff; background: var(--rose); box-shadow: var(--sh-xs); }
+.btn--danger:hover { filter: brightness(1.06); transform: translateY(-1px); }
+.btn--danger:active { transform: translateY(0); box-shadow: var(--sh-in-sm); }
 
 /* ---------- 响应式 ---------- */
 @media (max-width: 980px) {

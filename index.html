@@ -68,10 +68,9 @@
       <div class="seg-nav" id="segNav" role="tablist" aria-label="当前模块视图（数字键 1~9 切换）">
         <span class="seg-nav__thumb" aria-hidden="true"></span>
       </div>
-      <button class="btn btn--ghost btn--sm navrow__new" data-action="new-task">
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-        新建待办
-      </button>
+      <!-- 「新建待办」只保留在待办模块内：资讯/外卖/计薪等模块里放它，
+           点了要么没反应要么跳走，属于误导。入口统一收回到待办页自己的工具条。
+           侧栏快捷键 ⌘K 之外的「新建」仍可在待办模块按 N 触发。 -->
     </div>
 
     <div class="stage" id="stage"><!-- 视图由 JS 渲染 --></div>
