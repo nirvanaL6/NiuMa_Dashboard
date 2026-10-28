@@ -3,9 +3,19 @@ main = "src/index.js"
 compatibility_date = "2024-11-01"
 workers_dev = true
 
-# 前端与 API 同域部署时留空即可；分开部署时填前端域名（逗号分隔）
+# 前端与 API 同域部署：一个 Worker 同时提供页面与接口，无需配 CORS
+# public/ 由 `npm run build` 从项目根的 index.html + src/ 生成（已 gitignore）
+# /api/* 交给 Worker，其余走静态资源，未命中回落 index.html
+[assets]
+directory = "public"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]
+
 [vars]
+# 同域部署时浏览器不发跨域请求，此项仅本地开发（8765 静态 + 8787 API）需要
 ALLOWED_ORIGINS = "http://localhost:8765,http://127.0.0.1:8765"
+# 生产必须为 "false"：只有 true 时才回显验证码、才允许用占位 pepper
+DEV_MODE = "false"
 POW_DIFFICULTY = "16"
 DAILY_WRITES_LIMIT = "300"
 MAIL_FROM = "WorkDesk <no-reply@workdesk.local>"
@@ -13,8 +23,9 @@ MAIL_FROM = "WorkDesk <no-reply@workdesk.local>"
 [[d1_databases]]
 binding = "DB"
 database_name = "worker-desk"
-database_id = "local-dev-placeholder"
+# 换成 `wrangler d1 create worker-desk` 返回的真实 id
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
 
 # 生产请用 `wrangler secret put` 写入，不要提交到仓库：
-#   CODE_PEPPER     —— 验证码/会话哈希的密钥（32 字节随机串）
-#   RESEND_API_KEY  —— 发信通道；不配置则进入开发模式，验证码直接回显
+#   CODE_PEPPER     —— 验证码/会话哈希的密钥（32 字节随机串），必须配置
+#   RESEND_API_KEY  —— 发信通道；不配置则进入开发模式，验证码直接回显到响应

@@ -4,6 +4,9 @@
 import { json } from './http.js';
 import * as api from './api.js';
 
+/** 部署漏配项导致的错误：文案对外可见，便于一眼定位 */
+const CONFIG_ERRORS = new Set(['server_misconfigured', 'mail_not_configured']);
+
 const ALLOWED_ORIGINS = (env) =>
   (env.ALLOWED_ORIGINS || 'http://localhost:8765,http://127.0.0.1:8765')
     .split(',')
@@ -69,7 +72,11 @@ export default {
         ok: false,
         error: {
           code: err.code || 'server_error',
-          message: status >= 500 ? '服务暂时不可用，请稍重试' : err.message,
+          // 配置类错误直接给原因，便于部署后自检；其它 5xx 不暴露细节
+          message:
+            status >= 500 && !CONFIG_ERRORS.has(err.code)
+              ? '服务暂时不可用，请稍重试'
+              : err.message,
         },
         ...(err.extra || {}),
       };

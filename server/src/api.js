@@ -36,9 +36,22 @@ export function passwordProblem(pwd) {
   return null;
 }
 
+/**
+ * 取哈希 pepper。
+ * 生产必须用 `wrangler secret put CODE_PEPPER` 配置；只有显式 DEV_MODE=true 时才允许
+ * 使用固定的本地占位值，避免漏配时用一个公开字符串伪装成安全配置。
+ */
 function pepper(env) {
-  return env.CODE_PEPPER || 'dev-pepper-change-me';
+  const v = (env.CODE_PEPPER || '').trim();
+  if (v) return v;
+  if (env.DEV_MODE === 'true') return 'dev-only-pepper-not-for-production';
+  throw Object.assign(new Error('服务端未配置 CODE_PEPPER，请先设置 secret'), {
+    code: 'server_misconfigured',
+    status: 500,
+  });
 }
+
+const devModeOn = (env) => env.DEV_MODE === 'true';
 
 function clientIp(req) {
   return req.headers.get('cf-connecting-ip') || req.headers.get('x-forwarded-for')?.split(',')[0] || '127.0.0.1';
@@ -170,14 +183,23 @@ export async function sendCode(env, req, { email, purpose, pow, honeypot }) {
 
   if (purpose === 'reset' && !exists) {
     // 不存在也返回 sent，前端提示统一文案
-    return { sent: true, devMode: !env.RESEND_API_KEY, delivered: false, masked: maskEmail(emailNorm) };
+    return { sent: true, devMode: devModeOn(env), delivered: false, masked: maskEmail(emailNorm) };
+  }
+  // 生产环境没配发信通道时不能假装成功：否则用户永远收不到验证码，却看到「已发送」
+  if (!devModeOn(env) && !env.RESEND_API_KEY) {
+    throw Object.assign(new Error('服务端未配置发信通道（RESEND_API_KEY），验证码无法送达'), {
+      code: 'mail_not_configured',
+      status: 503,
+    });
   }
   const out = await sendCodeMail(env, emailNorm, code, purpose);
+  // devCode 只在显式开发模式下回传，否则生产漏配发信通道就等于任何人都能拿到验证码
+  const echo = devModeOn(env);
   return {
     sent: true,
-    devMode: out.channel === 'dev',
+    devMode: echo,
     delivered: out.delivered,
-    devCode: out.devCode,
+    devCode: echo ? out.devCode : undefined,
     masked: maskEmail(emailNorm),
   };
 }

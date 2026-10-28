@@ -5,6 +5,10 @@
 # `.dev.vars` 已被 .gitignore 排除，不会进入仓库。
 # 生产环境请用 `npx wrangler secret put <NAME>` 写入，不要写进 wrangler.toml。
 
+# 本地开发开关：true 时验证码会在响应里回显并自动填入表单
+# 生产环境务必保持 false（wrangler.toml 里已显式写成 false）
+DEV_MODE=true
+
 # 验证码 / 会话令牌的哈希 pepper，建议 32 字节以上随机串
 #   生成方式：openssl rand -base64 32
 CODE_PEPPER=
