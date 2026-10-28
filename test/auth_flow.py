@@ -30,11 +30,11 @@ with sync_playwright() as p:
 
     # 2. 免登录模式下勾选待办 → 落本地
     pg.click('[data-module="todo"]'); pg.wait_for_timeout(700)
-    pg.wait_for_selector("#todoList .todo", timeout=5000)
+    pg.wait_for_selector(".td__check", timeout=5000)
     before_done = pg.evaluate("JSON.parse(localStorage.getItem('wd-data')).todos.filter(t=>t.done).length")
-    pg.locator("#todoList .todo").first.click(); pg.wait_for_timeout(600)
+    pg.locator(".td__check").first.click(); pg.wait_for_timeout(600)
     done_count = pg.evaluate("JSON.parse(localStorage.getItem('wd-data')).todos.filter(t=>t.done).length")
-    print("   done 数量:", done_count, "| aria:", pg.evaluate("[...document.querySelectorAll('#todoList .todo')].map(e=>e.getAttribute('aria-checked')).join('')"))
+    print("   done 数量:", done_count, "| aria:", pg.evaluate("[...document.querySelectorAll('.td__check')].map(e=>e.getAttribute('aria-checked')).join('')"))
     chk(done_count == before_done + 1, f"勾选后写入本地（{before_done} → {done_count} 条）")
     local_only = pg.evaluate("localStorage.getItem('wd-token')")
     chk(not local_only, "免登录模式无 token")
@@ -97,15 +97,15 @@ with sync_playwright() as p:
     cloud = pg.evaluate("(async()=>{const r=await fetch('http://127.0.0.1:8787/api/state',{headers:{authorization:'Bearer '+localStorage.getItem('wd-token')}});return await r.json()})()")
     chk(cloud.get("version", 0) >= 1 and cloud["payload"]["todos"], f"云端已存快照 v{cloud.get('version')} ({cloud.get('bytes')}B)")
 
-    # 9. 登录后改数据 → 自动上传（5s 防抖）
-    pg.click('[data-module="food"]'); pg.wait_for_timeout(800)
-    print("   claimable:", pg.locator("[data-claim]:not([disabled])").count(), "badge:", pg.get_attribute("#btnAccount","data-sync"))
-    pg.locator("[data-claim]:not([disabled])").first.click(); pg.wait_for_timeout(900)
-    print("   claims local:", pg.evaluate("Object.keys(JSON.parse(localStorage.getItem('wd-data')).claims||{})"), "badge:", pg.get_attribute("#btnAccount","data-sync"))
+    # 9. 登录后改数据 → 自动上传（5s 防抖）。外卖模块已改为「施工中」，改用待办勾选触发改动
+    pg.click('[data-module="todo"]'); pg.wait_for_timeout(800)
+    print("   badge:", pg.get_attribute("#btnAccount","data-sync"))
+    pg.locator(".td__check").nth(1).click(); pg.wait_for_timeout(900)
+    print("   local done:", pg.evaluate("JSON.parse(localStorage.getItem('wd-data')).todos.filter(t=>t.done).length"), "badge:", pg.get_attribute("#btnAccount","data-sync"))
     pg.wait_for_function("document.querySelector('#btnAccount').dataset.sync !== 'dirty'", timeout=15000)
     print("   after wait badge:", pg.get_attribute("#btnAccount","data-sync"))
     cloud2 = pg.evaluate("(async()=>{const r=await fetch('http://127.0.0.1:8787/api/state',{headers:{authorization:'Bearer '+localStorage.getItem('wd-token')}});return await r.json()})()")
-    chk(len(cloud2["payload"].get("claims", {})) >= 1, f"领券后自动同步到云端 v{cloud2.get('version')}")
+    chk(cloud2["payload"].get("todos") and any(t.get("done") for t in cloud2["payload"]["todos"]), f"改动后自动同步到云端 v{cloud2.get('version')}")
 
     # 10. 退出登录
     pg.click("#btnAccount"); pg.wait_for_timeout(700)
@@ -124,8 +124,8 @@ with sync_playwright() as p:
     pg.wait_for_timeout(1200)
     chk(pg.evaluate("localStorage.getItem('wd-mode')") == "cloud", "登录成功回到云端模式")
     if pg.locator("#sheetMask.open").count(): pg.click("#sheetClose"); pg.wait_for_timeout(500)
-    claims = pg.evaluate("Object.keys(JSON.parse(localStorage.getItem('wd-data')).claims||{}).length")
-    chk(claims >= 1, f"登录后拉回云端数据（券 {claims} 张）")
+    synced = pg.evaluate("JSON.parse(localStorage.getItem('wd-data')).todos.filter(t=>t.done).length")
+    chk(synced >= 1, f"登录后拉回云端数据（已完成待办 {synced} 条）")
 
     # 12. 找回密码
     pg.click("#btnAccount"); pg.wait_for_timeout(700)
