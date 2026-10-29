@@ -1,8 +1,13 @@
 """人机验证（Cloudflare Turnstile）端到端回归
 
-前置：
+前置（**必须用官方测试密钥**，否则浏览器里的挑战过不了）：
+  - wrangler.toml 的 TURNSTILE_SITE_KEY = "1x00000000000000000000AA"
+  - .dev.vars 的 TURNSTILE_SECRET_KEY = "1x0000000000000000000000000000000AA"
   - 静态前端  python3 -m http.server 8765（项目根）
   - 本地 API  cd server && npx wrangler dev --port 8787 --local -c wrangler.build.toml
+
+用正式 site key 跑本脚本会失败，且失败是**正确行为**：127.0.0.1 不在该 key 的
+域名白名单里，浏览器端回 110200。线上真实链路请跑 test/turnstile_live.py。
 
 运行：python3 test/turnstile.py
 """

@@ -883,7 +883,10 @@ h1, h2, h3, h4, p { margin: 0; }
 .auth-human svg { color: var(--primary); flex: none; }
 
 /* Turnstile 挂载点：只在验证时展开，避免常态下多出一块空白 */
-.auth-ts { margin-top: 10px; min-height: 65px; }
+/* Turnstile 挂载点：只在验证时展开。
+   给固定高度而不是 min-height —— 组件按容器实际尺寸初始化，高度会跳变的话
+   挑战尺寸算错（600010）。固定 65px 正好容纳 managed 模式的 widget。 */
+.auth-ts { margin-top: 10px; height: 65px; }
 .auth-ts[hidden] { display: none; }
 .auth-ts > div, .auth-ts iframe { width: 100% !important; }
 

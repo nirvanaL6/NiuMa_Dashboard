@@ -19,3 +19,9 @@ RESEND_API_KEY=
 
 # 发件人，需与 Resend 已验证的域名一致
 MAIL_FROM=WorkDesk <no-reply@your-domain.com>
+
+# Cloudflare Turnstile 密钥，与 wrangler.toml 里的 TURNSTILE_SITE_KEY 配对。
+# 本地没有正式密钥时用官方测试对（始终通过，假 token 也放行）：
+#   TURNSTILE_SITE_KEY 在 wrangler.toml 里改成 1x00000000000000000000AA（该密钥会自动配对测试 secret）
+# 若 wrangler.toml 用的是正式 site key，这里必须填对应的正式 secret，否则接口返回 503
+TURNSTILE_SECRET_KEY=

@@ -334,7 +334,10 @@ async function solveCaptcha() {
   const slot = $('#captchaSlot', root);
   if (!cfg?.enabled || !cfg?.siteKey || !slot) return null;
   setCaptchaText(`${icon('shield', 13)} <span>正在完成人机验证…</span>`);
+  // 必须先展开再渲染：Turnstile 在 display:none / hidden 的容器里初始化会拿到 0×0 尺寸，
+  // 直接以 600010（挑战无法完成）失败。等一帧保证布局落定。
   slot.hidden = false;
+  await new Promise((r) => requestAnimationFrame(() => r()));
   try {
     const token = await runTurnstile({ siteKey: cfg.siteKey, slot });
     slot.hidden = true;
@@ -408,9 +411,14 @@ function handleErr(err, fallbackField = 'password') {
   if (fieldName && root.querySelector(`[data-err="${fieldName}"]`)) {
     showErr(fieldName, msg);
   } else {
-    // 字段不存在（例如挑战类错误、风控类错误）时落到表单底部，绝不静默吞掉
-    showFormMsg(msg);
-    if (code.startsWith('captcha')) setCaptchaText(`${icon('alert', 13)} <span>${msg}</span>`);
+    // 环境类失败（机房 IP / VPN / 域名没加白名单）重试无意义，必须把出路摆出来，
+    // 否则用户会在登录页反复点「登录」；其余情况落到底部一行即可
+    // -1 表示客户端超时（见 api.js 的 runTurnstile 计时器）
+    const deadEnd = err?.tsCode && [-1, 600010, 110200, 400020, 400070].includes(err.tsCode);
+    showFormMsg(deadEnd ? `${msg}；也可先「继续免登录使用」，数据会存在本机` : msg);
+    if (code.startsWith('captcha')) {
+      setCaptchaText(`${icon('alert', 13)} <span>${err.tsShort || '人机验证失败'}</span>`);
+    }
   }
 }
 

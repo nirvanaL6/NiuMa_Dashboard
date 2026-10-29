@@ -17,10 +17,9 @@ ALLOWED_ORIGINS = "http://localhost:8765,http://127.0.0.1:8765"
 # 生产必须为 "false"：只有 true 时才回显验证码、才允许用占位 pepper
 DEV_MODE = "false"
 DAILY_WRITES_LIMIT = "300"
-# Cloudflare Turnstile 站点密钥（本来就是公开的，可直接写在配置里）。
-# 下面这组是 Cloudflare 官方「始终通过」的测试密钥，用来在还没申请正式密钥时跑通链路；
-# 上生产必须换成自己域名的 site key，并用 wrangler secret put TURNSTILE_SECRET_KEY 配密钥。
-TURNSTILE_SITE_KEY = "1x00000000000000000000AA"
+# Cloudflare Turnstile 站点密钥（公开信息，可直接写进配置）。
+# 对应 secret 用 `wrangler secret put TURNSTILE_SECRET_KEY` 写入，不进仓库。
+TURNSTILE_SITE_KEY = "0x4AAAAAAFqp3K6dSYNOZEa2"
 # 必须使用 Resend 已验证域名下的地址，否则发送会被拒
 MAIL_FROM = "WorkDesk <no-reply@763988.xyz>"
 
@@ -42,5 +41,4 @@ database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
 # 生产请用 `wrangler secret put` 写入，不要提交到仓库：
 #   CODE_PEPPER         —— 验证码/会话哈希的密钥（32 字节随机串），必须配置
 #   RESEND_API_KEY      —— 发信通道；不配置则进入开发模式，验证码直接回显到响应
-#   TURNSTILE_SECRET_KEY —— Turnstile 密钥；site key 仍是上面那组测试密钥时可省略
-#                          （会自动配对官方测试密钥），换成正式 site key 后必须配置
+#   TURNSTILE_SECRET_KEY —— Turnstile 密钥，必填；缺失时接口返回 503 server_misconfigured

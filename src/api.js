@@ -104,6 +104,29 @@ export async function captchaConfig() {
 }
 
 /**
+ * Turnstile 错误码 → 可操作的提示。
+ * 这几种情况重试是没用的，必须告诉用户换条路走，否则会被弹窗卡死在登录页：
+ *   110200 站点密钥里没配当前域名   —— 部署配置问题，不是用户的问题
+ *   400020 站点密钥无效
+ *   600010 挑战无法完成             —— 常见于机房 IP / VPN / 代理 / 隐私插件拦截
+ */
+const TS_ERRORS = {
+  110200: ['域名未在 Turnstile 授权', '当前域名未加入人机验证白名单，请联系管理员'],
+  400020: ['站点密钥无效', '人机验证配置有误，请联系管理员'],
+  400070: ['站点密钥域名不匹配', '人机验证配置有误，请联系管理员'],
+  600010: ['环境被判定为风险', '当前网络环境（VPN / 代理 / 公司机房）无法通过人机验证，请换一个网络后重试'],
+  300030: ['挑战超时', '人机验证超时，请重试'],
+};
+
+function tsError(code) {
+  const [short, hint] = TS_ERRORS[Number(code)] || ['人机验证失败', '人机验证未通过，请重试'];
+  const err = new ApiError('captcha_error', hint, 0);
+  err.tsCode = Number(code);
+  err.tsShort = short;
+  return err;
+}
+
+/**
  * 渲染一次 Turnstile 并拿到 token。
  * 组件是「无人值守」的：绝大多数用户看不到任何交互，验证在后台自动完成；
  * 只有被判定为可疑时才要求点一下复选框。
@@ -121,9 +144,14 @@ export function runTurnstile({ siteKey, slot, theme, onState }) {
       clearTimeout(timer);
       fn(arg);
     };
+    // 15 秒拿不到 token 基本就是环境问题（机房 IP / 代理 / 插件拦截），
+    // 与其让用户在登录页干等一分钟，不如早点给出可操作的提示
     const timer = setTimeout(() => {
-      finish(reject, new ApiError('captcha_timeout', '人机验证超时，请重试'));
-    }, 60000);
+      const err = new ApiError('captcha_timeout', '人机验证超时：若长期停在这里，通常是 VPN、代理或广告拦截插件所致，换个网络或关掉插件后重试', 0);
+      err.tsCode = -1;
+      err.tsShort = '人机验证超时';
+      finish(reject, err);
+    }, 15000);
     let widgetId = null;
     // 同一个挂载点可能被复用（连点两次「获取验证码」），先把上一个组件摘掉，
     // 否则 widget 会一层层叠上去，且旧组件永远不会回调
@@ -138,11 +166,12 @@ export function runTurnstile({ siteKey, slot, theme, onState }) {
         theme: tsTheme,
         size: 'flexible',
         callback: (token) => finish(resolve, token),
-        'error-callback': () => finish(reject, new ApiError('captcha_error', '人机验证出错，请重试')),
+        'error-callback': (code) => finish(reject, tsError(code)),
         'expired-callback': () => finish(reject, new ApiError('captcha_timeout', '人机验证已过期，请重试')),
+        'timeout-callback': () => finish(reject, new ApiError('captcha_timeout', '人机验证超时，请重试')),
         'before-interactive-callback': () => onState?.('interactive'),
         'after-interactive-callback': () => onState?.('done'),
-        'unsupported-callback': () => finish(reject, new ApiError('captcha_error', '当前浏览器不支持人机验证')),
+        'unsupported-callback': () => finish(reject, new ApiError('captcha_error', '当前浏览器不支持人机验证，请换用 Chrome / Edge / Safari 最新版')),
       });
     } catch (err) {
       finish(reject, new ApiError('captcha_error', '人机验证启动失败，请刷新页面'));
