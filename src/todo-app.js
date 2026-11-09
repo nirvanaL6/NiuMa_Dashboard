@@ -41,6 +41,7 @@ function resolve(type, id) {
 /* ---------------- 弹窗宿主 ---------------- */
 let host = null;
 let onSaved = null;
+
 export function mountTodo(hostEl, { onChange } = {}) {
   host = hostEl;
   onSaved = onChange || null;
@@ -69,6 +70,26 @@ function patchTodoDom(id, done) {
     b.setAttribute('aria-checked', String(done));
     b.setAttribute('aria-label', done ? '标记未完成' : '标记完成');
   });
+}
+
+/**
+ * 「项目&待办」视图在勾选后是否必须整页重绘。
+ *
+ * 归档规则让完成态会改变条目所在的区块（独立待办 → 已完成；项目最后一条勾完 →
+ * 整张卡搬去已完成），只改 class 会留下假状态。但列表视图通常只有几十个节点，
+ * 整页重绘的代价远小于给每种迁移写一套局部 patch，所以这里只在「真的会搬家」
+ * 时重绘，其余情况继续走局部更新（四宫格 / 概览的高频勾选不受影响）。
+ */
+function listNeedsRelayout(todo, next) {
+  const stage = document.querySelector('#stage');
+  if (!stage || !stage.querySelector('#projectList')) return false;
+  if (!todo.projectId) return true;
+  const own = todos().filter((x) => x.projectId === todo.projectId);
+  if (!own.length) return false;
+  const doneNow = own.filter((x) => x.done).length;
+  const doneAfter = own.filter((x) => (x.id === todo.id ? next : x.done)).length;
+  // 两个方向都要管：勾上最后一条 → 项目归档走；取消归档项目里的任意一条 → 项目搬回来
+  return (doneNow === own.length) !== (doneAfter === own.length);
 }
 
 /** 重新数格子里的条目，同步角标并补/去空态提示 */
@@ -415,9 +436,15 @@ export function bindTodoEvents({ go, toast: t }) {
       const next = !t.done;
       // 四宫格里勾完条目会直接消失，得告诉用户去哪找回，否则像被误删
       const inQuad = !!document.querySelector('#quadGrid');
+      const relayout = listNeedsRelayout(t, next);
       saveTodos(todos().map((x) => (x.id === id ? { ...x, done: next } : x)));
-      patchTodoDom(id, next);
-      notifyPatch();
+      if (relayout) {
+        // 视图已变（归档 / 取消归档），旧节点不可再复用
+        notify();
+      } else {
+        patchTodoDom(id, next);
+        notifyPatch();
+      }
       if (next && inQuad) {
         toastFn?.(`已完成「${escHtml(t.title)}」，已从四宫格移出；要改回请去「项目&待办」`, 2800);
       }
@@ -426,8 +453,20 @@ export function bindTodoEvents({ go, toast: t }) {
 
     const editT = e.target.closest('[data-edit-todo]');
     if (editT) return openEditor('todo', editT.dataset.editTodo);
+    const delT = e.target.closest('[data-del-todo]');
+    if (delT) return void deleteEntry('todo', delT.dataset.delTodo);
     const editP = e.target.closest('[data-edit-project]');
     if (editP) return openEditor('project', editP.dataset.editProject);
+
+    /* ---- 折叠（项目卡片 / 待办模块整体） ---- */
+    const foldMod = e.target.closest('[data-fold-module]');
+    if (foldMod) {
+      const key = foldMod.dataset.foldModule;
+      const cur = !(data().folded || {})[key];
+      store.saveData({ folded: { ...(data().folded || {}), [key]: cur } });
+      notify();
+      return;
+    }
 
     // 遮罩空白处、关闭按钮、取消按钮都走这里；点弹窗内容区不关闭
     const closeBtn = e.target.closest('.ed__x, .ed [data-ed-close].btn');

@@ -1010,6 +1010,47 @@ h1, h2, h3, h4, p { margin: 0; }
 .pj:hover { box-shadow: var(--sh-md); }
 .pj--loose { box-shadow: var(--sh-in-sm); }
 
+/* ---------- 已完成归档区 ---------- */
+.pj--archive { box-shadow: var(--sh-in-sm); background: var(--surface-sunken); }
+.pj--archive .pj__title { color: var(--ink-2); }
+.arc__body { margin-top: 6px; display: flex; flex-direction: column; gap: 14px; }
+.arc__block { display: flex; flex-direction: column; gap: 7px; }
+.arc__title {
+  font-size: 10.5px; font-weight: 750; color: var(--ink-3);
+  letter-spacing: .04em; text-transform: none; margin: 2px 0 0 2px;
+}
+.arc__group { display: flex; flex-direction: column; gap: 2px; }
+.arc__group-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 5px 4px 3px 2px; font-size: 10.5px; font-weight: 700; color: var(--ink-3);
+  border-top: 1px dashed var(--line-strong);
+}
+.arc__group:first-child .arc__group-head { border-top: 0; }
+.arc__n {
+  min-width: 17px; height: 17px; padding: 0 5px; border-radius: 99px;
+  display: grid; place-items: center; font-size: 9.5px; font-weight: 750;
+  color: var(--ink-3); background: var(--surface); box-shadow: var(--sh-in-sm);
+  font-variant-numeric: tabular-nums;
+}
+.arc__list { margin-top: 0; }
+
+/* 归档行：不做删除线，靠前面的勾与整体降权表达「已完成」 */
+.td--archived { align-items: center; border-top: 1px dashed var(--line); opacity: .86; }
+.td--archived .td__main { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
+.td--archived .td__title { flex: 1; min-width: 0; color: var(--ink-3); }
+.td--archived .td__meta { margin-top: 0; flex: none; }
+.td__del {
+  width: 24px; height: 24px; flex: none; border-radius: 8px; display: grid; place-items: center;
+  color: var(--ink-4); opacity: 0;
+  transition: opacity var(--dur-1), color var(--dur-1), background var(--dur-1);
+}
+.td--archived:hover .td__del { opacity: 1; }
+.td__del:hover { color: var(--rose); background: var(--surface-raised); }
+.td__del:focus-visible { opacity: 1; }
+/* 已完成项目卡整体降权，保留展开查看子待办 */
+.pj--archived .pj__title { color: var(--ink-3); display: flex; align-items: center; gap: 5px; }
+.pj--archived .pj__title svg { color: var(--primary); flex: none; }
+
 .pj__head { display: flex; align-items: center; gap: 9px; }
 .pj__fold {
   width: 20px; height: 20px; flex: none; display: grid; place-items: center;

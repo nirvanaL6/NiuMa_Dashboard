@@ -57,16 +57,16 @@ function todoRow(t, { showProject = true } = {}) {
   </li>`;
 }
 
-function projectCard(p) {
+function projectCard(p, { archived = false } = {}) {
   const own = todos().filter((t) => t.projectId === p.id);
   const done = own.filter((t) => t.done).length;
   const pct = own.length ? Math.round((done / own.length) * 100) : 0;
   const overdue = own.filter((t) => isOverdue(t)).length;
-  return `<section class="pj" data-pid="${esc(p.id)}" ${dragAttrs('project', p.id)}>
+  return `<section class="pj${archived ? ' pj--archived' : ''}" data-pid="${esc(p.id)}" ${dragAttrs('project', p.id)}>
     <header class="pj__head">
-      <button class="pj__fold" data-fold-project="${esc(p.id)}" aria-expanded="true" aria-label="折叠">${icon('chevronRight', 12, 2.4)}</button>
+      <button class="pj__fold" data-fold-project="${esc(p.id)}" aria-expanded="${archived ? 'false' : 'true'}" aria-label="折叠">${icon('chevronRight', 12, 2.4)}</button>
       <div class="pj__title-wrap">
-        <h4 class="pj__title" title="${esc(p.title)}">${esc(p.title)}</h4>
+        <h4 class="pj__title" title="${esc(p.title)}">${archived ? icon('check', 12, 2.6) : ''}${esc(p.title)}</h4>
         <div class="pj__meta">
           <span>${own.length} 条待办${overdue ? ` · <b class="is-late">${overdue} 条逾期</b>` : ''}</span>
           ${p.due ? `<span class="td__due">${icon('clock', 11)} ${fmtDue(p.due)}</span>` : ''}
@@ -78,26 +78,133 @@ function projectCard(p) {
       <div class="pj__right">
         <div class="pj__bar" title="完成 ${done}/${own.length}"><i style="width:${pct}%"></i></div>
         <span class="pj__pct">${pct}%</span>
-        <button class="pj__add" data-add-todo-to="${esc(p.id)}" title="在此项目下新建待办">${icon('plus', 13, 2.6)}</button>
+        ${archived ? '' : `<button class="pj__add" data-add-todo-to="${esc(p.id)}" title="在此项目下新建待办">${icon('plus', 13, 2.6)}</button>`}
         <button class="pj__edit" data-edit-project="${esc(p.id)}" title="编辑项目">${icon('pencil', 13)}</button>
       </div>
     </header>
-    <ul class="pj__list" data-fold-body="${esc(p.id)}">
+    <ul class="pj__list" data-fold-body="${esc(p.id)}"${archived ? ' hidden' : ''}>
       ${own.length ? own.map((t) => todoRow(t, { showProject: false })).join('') : `<li class="pj__empty">还没有待办，点右上角 + 添加</li>`}
     </ul>
   </section>`;
 }
 
+/* ---------------- 归档判定 ----------------
+   规则（与产品确认过）：
+   - 项目至少 1 条待办且全部完成 → 整个项目进「已完成」；项目里的待办一并在项目卡里展开查看。
+     空项目不算完成，仍留在主列表，方便继续往里加待办。
+   - 项目部分完成 → 完成的待办留在项目里，不单独归档（跟着项目走）。
+   - 独立待办完成 → 按计划日期归档到「已完成」。
+*/
+const projectDone = (pid) => {
+  const own = todos().filter((t) => t.projectId === pid);
+  return own.length > 0 && own.every((t) => t.done);
+};
+
+export function archivedProjects() {
+  return projects().filter((p) => projectDone(p.id));
+}
+
+export function archivedTodos() {
+  return todos().filter((t) => !t.projectId && t.done);
+}
+
+/**
+ * 已完成待办按计划日期倒序分组：最近的排在最前。
+ * 没有计划日期的排最后，而不是塞到某个日期里假装它那天做的。
+ */
+export function groupByPlanDate(list) {
+  const groups = new Map();
+  [...list].sort((a, b) => {
+    const ka = dayKey(a.planAt);
+    const kb = dayKey(b.planAt);
+    if (!ka && !kb) return (b.createdAt || 0) - (a.createdAt || 0);
+    if (!ka) return 1;
+    if (!kb) return -1;
+    return kb.localeCompare(ka) || (b.createdAt || 0) - (a.createdAt || 0);
+  }).forEach((t) => {
+    const key = dayKey(t.planAt) || '';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(t);
+  });
+  return [...groups.entries()];
+}
+
+const WD_SHORT = ['日', '一', '二', '三', '四', '五', '六'];
+
+/** 归档区里的一行：勾选框可取消完成，右侧垃圾桶删除 */
+function archivedRow(t, { showProject = false } = {}) {
+  const p = projects().find((x) => x.id === t.projectId);
+  return `<li class="td td--archived is-done" data-todo-row="${esc(t.id)}" data-archived-row="${esc(t.id)}">
+    <button class="td__check" data-toggle-todo="${esc(t.id)}" aria-checked="true" role="checkbox"
+      aria-label="取消完成并放回列表">${icon('check', 11, 3)}</button>
+    <div class="td__main">
+      <div class="td__title" title="${esc(t.title)}">${esc(t.title)}</div>
+      <div class="td__meta">
+        ${t.due ? `<span class="td__due">${icon('clock', 11)} ${fmtDue(t.due)}</span>` : ''}
+        ${showProject && p ? `<span class="td__proj">${esc(p.title)}</span>` : ''}
+        ${freeTags(t.tags).map((x) => `<span class="td__tag">#${esc(x)}</span>`).join('')}
+      </div>
+    </div>
+    <button class="td__del" data-del-todo="${esc(t.id)}" aria-label="删除这条待办" title="删除">${icon('trash', 13)}</button>
+  </li>`;
+}
+
+export function viewTodoArchive() {
+  const groups = groupByPlanDate(archivedTodos());
+  const ps = archivedProjects();
+  const total = archivedTodos().length + ps.length;
+  if (!total) {
+    return `<section class="pj pj--archive">
+      <header class="pj__head">
+        <span class="pj__fold is-static">${icon('inbox', 13)}</span>
+        <div class="pj__title-wrap">
+          <h4 class="pj__title">已完成</h4>
+          <div class="pj__meta"><span>暂无已完成条目</span></div>
+        </div>
+      </header>
+    </section>`;
+  }
+  return `<section class="pj pj--archive" id="archiveSection">
+    <header class="pj__head">
+      <span class="pj__fold is-static">${icon('check', 13, 2.4)}</span>
+      <div class="pj__title-wrap">
+        <h4 class="pj__title">已完成</h4>
+        <div class="pj__meta"><span>${ps.length ? `${ps.length} 个项目` : ''}${ps.length && groups.length ? ' · ' : ''}${groups.length ? `${archivedTodos().length} 条独立待办` : ''}</span></div>
+      </div>
+    </header>
+    <div class="arc__body">
+      ${ps.length ? `<div class="arc__block">
+        <h5 class="arc__title">已完成项目</h5>
+        <div class="pj-list">${ps.map((p) => projectCard(p, { archived: true })).join('')}</div>
+      </div>` : ''}
+      ${groups.length ? `<div class="arc__block">
+        <h5 class="arc__title">独立待办</h5>
+        ${groups.map(([key, list]) => {
+          const d = key ? dayDate(key) : null;
+          const label = d ? `${d.getMonth() + 1}月${d.getDate()}日 · 周${WD_SHORT[d.getDay()]}` : '未设置计划日期';
+          return `<div class="arc__group">
+            <div class="arc__group-head"><span>${label}</span><span class="arc__n">${list.length}</span></div>
+            <ul class="pj__list arc__list">${list.map((t) => archivedRow(t, { showProject: false })).join('')}</ul>
+          </div>`;
+        }).join('')}
+      </div>` : ''}
+    </div>
+  </section>`;
+}
+
 export function viewTodoList() {
-  const loose = todos().filter((t) => !t.projectId);
+  // 独立待办完成后归档；项目内的待办跟着项目走（项目全完成时整卡归档）
+  const loose = todos().filter((t) => !t.projectId && !t.done);
   const all = todos();
   const open = all.filter((t) => !t.done).length;
   const overdue = all.filter((t) => isOverdue(t)).length;
+  const activeProjects = projects().filter((p) => !projectDone(p.id));
+  const noProjects = projects().length === 0;
 
   return `
   <div class="td-bar">
     <div class="td-bar__stats">
-      <span><b>${projects().length}</b> 个项目</span>
+      <span><b>${activeProjects.length}</b> 个项目</span>
       <span class="dot-line"></span>
       <span><b>${open}</b> 条未完成</span>
       ${overdue ? `<span class="dot-line"></span><span class="is-late"><b>${overdue}</b> 条逾期</span>` : ''}
@@ -109,7 +216,7 @@ export function viewTodoList() {
   </div>
 
   <div class="pj-list" id="projectList">
-    ${projects().length ? projects().map(projectCard).join('') : stateBlock({ title: '还没有项目', desc: '点右上角「新建项目」开始，或先建一条独立待办' })}
+    ${activeProjects.length ? activeProjects.map((p) => projectCard(p)).join('') : stateBlock(noProjects ? { title: '还没有项目', desc: '点右上角「新建项目」开始，或先建一条独立待办' } : { title: '没有进行中的项目', desc: '全部项目都已完成，见下方「已完成」' })}
   </div>
 
   <section class="pj pj--loose">
@@ -126,7 +233,9 @@ export function viewTodoList() {
     <ul class="pj__list" id="looseList">
       ${loose.length ? loose.map((t) => todoRow(t, { showProject: false })).join('') : `<li class="pj__empty">暂无独立待办</li>`}
     </ul>
-  </section>`;
+  </section>
+
+  ${viewTodoArchive()}`;
 }
 
 /* =========================================================
