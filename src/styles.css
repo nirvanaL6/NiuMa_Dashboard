@@ -114,7 +114,10 @@ body {
   overflow: hidden;
 }
 button, input, select { font: inherit; color: inherit; }
-button { border: 0; background: none; cursor: pointer; }
+/* padding 必须归零：Chrome 给 button 的 UA 默认值 `1px 6px` 会在
+   `display:grid; place-items:center` 的图标按钮里把内容推到右边（16px 的框
+   只剩 4px 内容宽），表现为「勾歪了」。需要留白的按钮都自己声明 padding。 */
+button { border: 0; background: none; padding: 0; cursor: pointer; }
 ul { list-style: none; margin: 0; padding: 0; }
 a { color: inherit; text-decoration: none; }
 h1, h2, h3, h4, p { margin: 0; }
@@ -1196,6 +1199,11 @@ h1, h2, h3, h4, p { margin: 0; }
 }
 .qi__n { font-size: 9.5px; font-weight: 750; color: var(--ink-4); flex: none; }
 .qi__due { font-size: 9.5px; color: var(--ink-4); flex: none; font-variant-numeric: tabular-nums; }
+/* 勾完后从这里淡出（见 todo-app.js 的 dropQuadRows） */
+.qi.is-leaving {
+  opacity: 0; transform: translateX(8px) scale(.97);
+  pointer-events: none; transition-duration: var(--dur-2);
+}
 .qi.is-done .qi__txt { color: var(--ink-4); }
 .qi--pj {
   background: color-mix(in srgb, var(--primary) 9%, var(--surface-raised));

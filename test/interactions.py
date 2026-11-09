@@ -57,17 +57,24 @@ with sync_playwright() as p:
     deco = pg.eval_on_selector(".td.is-done .td__title", "e => getComputedStyle(e).textDecorationLine")
     chk("line-through" not in deco, f"完成后标题无删除线（{deco}）")
 
-    # 6. 四宫格：可勾选完成 + 点击文字编辑
+    # 6. 四宫格：只放未完成的待办 —— 勾选后条目从格子里消失
     pg.click('[data-view="quadrant"]')
     pg.wait_for_timeout(800)
+    chk(pg.locator(".quad-cell .qi.is-done").count() == 0, "四宫格不含已完成条目")
     n_qi = pg.locator(".qi__check").count()
     chk(n_qi > 0, f"四宫格出现完成勾选框（{n_qi} 个）")
     if n_qi:
-        before = pg.locator(".qi__check").first.get_attribute("aria-checked")
-        pg.locator(".qi__check").first.click()
-        pg.wait_for_timeout(600)
-        after = pg.locator(".qi__check").first.get_attribute("aria-checked")
-        chk(before != after, f"四宫格勾选生效（{before} → {after}）")
+        row = pg.locator(".quad-cell .qi[data-todo-row]").first
+        title = row.locator(".qi__txt").inner_text()
+        quad = row.evaluate("e => e.closest('.quad-cell').dataset.quad")
+        cell_sel = f'.quad-cell[data-quad="{quad}"]'
+        badge_before = int(pg.locator(f"{cell_sel} .quad-cell__n").inner_text())
+        row.locator(".qi__check").click()
+        pg.wait_for_timeout(800)
+        left = pg.locator(f"{cell_sel} .qi__txt", has_text=title).count()
+        badge_after = int(pg.locator(f"{cell_sel} .quad-cell__n").inner_text())
+        chk(left == 0, f"勾选后条目从四宫格消失（{title[:12]}）")
+        chk(badge_after == badge_before - 1, f"格子角标同步递减（{badge_before} → {badge_after}）")
         chk(pg.locator(".ed").count() == 0, "四宫格勾选不误开编辑器")
     if pg.locator(".qi__txt[data-edit-todo]").count():
         pg.locator(".qi__txt[data-edit-todo]").first.click()
@@ -118,6 +125,24 @@ with sync_playwright() as p:
     pg.wait_for_selector(".toast", state="detached", timeout=6000)
     dt = time.time() - t0
     chk(dt < 3.2, f"toast 约 2 秒后消失（实测 {dt:.2f}s）")
+
+    # 11. 图标按钮里的图标必须居中（button 的 UA 默认 padding 1px 6px 会把内容推向右侧）
+    pg.click('[data-view="list"]')
+    pg.wait_for_timeout(700)
+    offs = pg.evaluate("""() => {
+      const out = {};
+      for (const sel of ['.td__check', '.pj__fold', '.td__edit']) {
+        const el = document.querySelector(sel); if (!el) continue;
+        const svg = el.querySelector('svg'); if (!svg) continue;
+        const r = el.getBoundingClientRect(), s = svg.getBoundingClientRect();
+        out[sel] = [+(s.x - r.x - (r.width - s.width) / 2).toFixed(2),
+                    +(s.y - r.y - (r.height - s.height) / 2).toFixed(2)];
+      }
+      return out;
+    }""")
+    print("   图标居中偏移:", offs)
+    chk(bool(offs) and all(abs(dx) <= 0.75 and abs(dy) <= 0.75 for dx, dy in offs.values()),
+        "勾选框 / 折叠箭头等图标在按钮内居中")
 
     print("\npageerror:", errs[:5])
     print("FAILS:", fails)

@@ -41,7 +41,6 @@ function resolve(type, id) {
 /* ---------------- 弹窗宿主 ---------------- */
 let host = null;
 let onSaved = null;
-
 export function mountTodo(hostEl, { onChange } = {}) {
   host = hostEl;
   onSaved = onChange || null;
@@ -61,12 +60,62 @@ const notifyPatch = () => { if (onSaved) onSaved({ patchOnly: true }); };
  * 完成态只影响 class 与 aria，就地改即可。
  */
 function patchTodoDom(id, done) {
+  // 四宫格只渲染未完成的待办，勾完就得真的消失，否则格子会被做完的事挤满
+  if (done) dropQuadRows(id);
   document.querySelectorAll(`[data-todo-row="${CSS.escape(id)}"]`).forEach((el) => {
     el.classList.toggle('is-done', done);
   });
   document.querySelectorAll(`[data-toggle-todo="${CSS.escape(id)}"]`).forEach((b) => {
     b.setAttribute('aria-checked', String(done));
     b.setAttribute('aria-label', done ? '标记未完成' : '标记完成');
+  });
+}
+
+/** 重新数格子里的条目，同步角标并补/去空态提示 */
+function refreshQuadCell(cell) {
+  const body = cell.querySelector('.quad-cell__body');
+  if (!body) return;
+  const n = body.querySelectorAll('.qi').length;
+  const badge = cell.querySelector('.quad-cell__n');
+  if (badge) badge.textContent = String(n);
+  const empty = body.querySelector('.quad-cell__empty');
+  if (!n && !empty) body.insertAdjacentHTML('beforeend', '<div class="quad-cell__empty">拖项目或待办到这里</div>');
+  if (n && empty) empty.remove();
+}
+
+/** 待分类侧栏同步计数与空态 */
+function refreshQuadSide() {
+  const list = document.querySelector('#quadSide .quad-side__list');
+  if (!list) return;
+  const n = list.querySelectorAll('.qi').length;
+  const chip = document.querySelector('#quadSide .chip');
+  if (chip) chip.textContent = String(n);
+  const empty = list.querySelector('.quad-side__empty');
+  if (!n && !empty) list.insertAdjacentHTML('beforeend', '<div class="quad-side__empty">全部已分类</div>');
+  if (n && empty) empty.remove();
+}
+
+/**
+ * 把四宫格 / 待分类里的一条待办淡出并移除。
+ * 只改 is-done 会留下一条「已完成」的僵尸条目，用户还得自己去找它在哪。
+ */
+function dropQuadRows(id) {
+  const sel = `[data-todo-row="${CSS.escape(id)}"]`;
+  document.querySelectorAll(`#quadGrid ${sel}, #quadSide ${sel}`).forEach((el) => {
+    const cell = el.closest('.quad-cell');
+    const inSide = !!el.closest('.quad-side__list');
+    el.classList.add('is-leaving');
+    let done = false;
+    const gone = () => {
+      if (done) return;
+      done = true;
+      el.remove();
+      if (cell) refreshQuadCell(cell);
+      else if (inSide) refreshQuadSide();
+    };
+    // transitionend 在后台标签页或「减少动态效果」下不会触发，用定时器兜底
+    el.addEventListener('transitionend', gone, { once: true });
+    setTimeout(gone, 320);
   });
 }
 
@@ -364,9 +413,14 @@ export function bindTodoEvents({ go, toast: t }) {
       const t = findTodo(id);
       if (!t) return;
       const next = !t.done;
+      // 四宫格里勾完条目会直接消失，得告诉用户去哪找回，否则像被误删
+      const inQuad = !!document.querySelector('#quadGrid');
       saveTodos(todos().map((x) => (x.id === id ? { ...x, done: next } : x)));
       patchTodoDom(id, next);
       notifyPatch();
+      if (next && inQuad) {
+        toastFn?.(`已完成「${escHtml(t.title)}」，已从四宫格移出；要改回请去「项目&待办」`, 2800);
+      }
       return;
     }
 

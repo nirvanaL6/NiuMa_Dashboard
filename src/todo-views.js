@@ -134,7 +134,9 @@ export function viewTodoList() {
    ========================================================= */
 function quadItems(qid) {
   const ps = projects().filter((p) => quadOf(p.tags) === qid);
-  const ts = todos().filter((t) => quadOf(t.tags) === qid);
+  // 已完成的待办不再参与四宫格划分：格子是「接下来要做什么」的视图，
+  // 做完的留在里面只会把真正待办挤到滚动区外。
+  const ts = todos().filter((t) => !t.done && quadOf(t.tags) === qid);
   return { ps, ts };
 }
 
@@ -142,7 +144,7 @@ export function viewTodoQuadrant() {
   // 待办也带 projectId 字段，不能靠它区分类型，统一打上 kind 标记
   const unassigned = [
     ...projects().filter((p) => !quadOf(p.tags)).map((data) => ({ kind: 'project', data })),
-    ...todos().filter((t) => !quadOf(t.tags)).map((data) => ({ kind: 'todo', data })),
+    ...todos().filter((t) => !t.done && !quadOf(t.tags)).map((data) => ({ kind: 'todo', data })),
   ];
   return `
   <div class="quad-wrap">
@@ -162,7 +164,7 @@ export function viewTodoQuadrant() {
             ${ps.map((p) => `<div class="qi qi--pj" ${dragAttrs('project', p.id)} title="项目：拖到其他格可改分类">
               <span class="qi__badge">${icon('folder', 11)}</span>
               <span class="qi__txt" title="${esc(p.title)}">${esc(p.title)}</span>
-              <span class="qi__n">${todos().filter((t) => t.projectId === p.id).length}</span>
+              <span class="qi__n">${todos().filter((t) => t.projectId === p.id && !t.done).length}</span>
             </div>`).join('')}
             ${ts.map((t) => `<div class="qi ${t.done ? 'is-done' : ''}" data-todo-row="${esc(t.id)}" ${dragAttrs('todo', t.id)}>
               <button class="qi__check" data-toggle-todo="${esc(t.id)}" aria-checked="${t.done}" role="checkbox"
@@ -187,7 +189,7 @@ export function viewTodoQuadrant() {
       <div class="quad-side__list">
         ${unassigned.length ? unassigned.map((x) => {
           const isPj = x.kind === 'project';
-          return `<div class="qi qi--side" ${dragAttrs(isPj ? 'project' : 'todo', x.data.id)}>
+          return `<div class="qi qi--side" ${isPj ? '' : `data-todo-row="${esc(x.data.id)}"`} ${dragAttrs(isPj ? 'project' : 'todo', x.data.id)}>
           <span class="qi__badge">${icon(isPj ? 'folder' : 'check', 11)}</span>
           <span class="qi__txt" title="${esc(x.data.title)}">${esc(x.data.title)}</span>
         </div>`;
