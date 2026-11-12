@@ -58,7 +58,9 @@ function boardCard(b, lists) {
   const open = !!newsState.expanded[b.id];
   const list = open ? b.items : b.items.slice(0, BOARD_PREVIEW);
   const rest = b.items.length - list.length;
-  return `<section class="board" data-board="${attr(b.id)}" style="--c:${attr(b.accent)}">
+  // 有的源不返回热度（百度常见）：整列都不显示时把热度列让给标题
+  const hasHot = b.items.some((it) => it.hot);
+  return `<section class="board${hasHot ? '' : ' board--nohot'}" data-board="${attr(b.id)}" style="--c:${attr(b.accent)}">
     <header class="board__head">
       <span class="board__dot"></span>
       <h3 class="board__ttl">${esc(b.label)}</h3>

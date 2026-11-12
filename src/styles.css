@@ -1653,7 +1653,8 @@ select.ed__input { appearance: none; cursor: pointer; }
 }
 .ni:hover, .ni:focus-within { background: var(--surface-raised); }
 .ni__link {
-  display: grid; grid-template-columns: 17px minmax(0, 1fr) auto; gap: 6px;
+  /* 热度列固定宽度：数值右对齐成一列，眼睛不用每行重新找 */
+  display: grid; grid-template-columns: 17px minmax(0, 1fr) 46px; gap: 6px;
   align-items: start; padding: 6px 2px 6px 3px;
   text-decoration: none; color: inherit; min-width: 0;
 }
@@ -1670,14 +1671,15 @@ select.ed__input { appearance: none; cursor: pointer; }
 .ni:hover .ni__t { color: var(--primary-deep); }
 .ni__hot {
   font-size: 10px; font-weight: 650; color: var(--ink-4); white-space: nowrap;
-  line-height: 16px; font-variant-numeric: tabular-nums;
+  line-height: 16px; font-variant-numeric: tabular-nums; text-align: right;
 }
-.ni__acts { display: flex; align-items: center; gap: 1px; padding-right: 1px; opacity: .5; transition: opacity var(--dur-1); }
+.ni__acts { display: flex; align-items: center; gap: 1px; padding-right: 1px; opacity: .62; transition: opacity var(--dur-1); }
 .ni:hover .ni__acts, .ni:focus-within .ni__acts { opacity: 1; }
 .ni__act {
   width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center;
-  color: var(--ink-4); transition: color var(--dur-1), background var(--dur-1);
+  color: var(--ink-3); transition: color var(--dur-1), background var(--dur-1);
 }
+.board--nohot .ni__link { grid-template-columns: 17px minmax(0, 1fr); }
 .ni__act:hover { color: var(--primary); background: var(--surface-sunken); }
 .ni__act.is-on { color: var(--primary); }
 .ni__act.is-on svg { fill: currentColor; }
