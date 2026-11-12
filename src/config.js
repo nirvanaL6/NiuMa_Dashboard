@@ -35,16 +35,17 @@ export const MODULES = [
   },
   {
     id: 'news',
-    wip: true,
     label: '资讯',
     icon: 'news',
     kicker: 'Briefing',
-    title: '行业简报',
-    desc: '午休 10 分钟能读完的量',
+    title: '资讯',
+    desc: '实时热门与资讯订阅，一屏看完今天在讨论什么',
+    ready: true,
     views: [
-      { id: 'feed', label: '今日推荐', icon: 'flame', hint: '按热度排序的行业动态' },
-      { id: 'topics', label: '订阅话题', icon: 'layers', hint: '只推送你关心的话题' },
-      { id: 'saved', label: '稍后读', icon: 'book', hint: '收藏但还没读完的内容' },
+      { id: 'realtime', label: '实时推荐', icon: 'flame', hint: '微博、百度、知乎、小红书四路热榜并列' },
+      { id: 'topics', label: '订阅话题', icon: 'rss', hint: '订阅 RSS 或网页，按源分框展示' },
+      { id: 'later', label: '稍后读', icon: 'bookmark', hint: '标记了但还没读的内容' },
+      { id: 'fav', label: '收藏', icon: 'star', hint: '值得留档的条目' },
     ],
   },
   {

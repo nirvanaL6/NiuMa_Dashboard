@@ -16,6 +16,14 @@ def chk(cond, msg):
 def data(pg):
     return pg.evaluate("JSON.parse(localStorage.getItem('wd-data'))")
 
+def set_fc(pg, field_id, value):
+    """自绘日期控件：写隐藏 input 并派发 change，等价于选完日期后的回写"""
+    pg.evaluate("""([id, v]) => {
+      const el = document.getElementById(id);
+      el.value = v;
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    }""", [field_id, value])
+
 with sync_playwright() as p:
     b = p.chromium.launch(executable_path="/usr/bin/google-chrome", args=["--no-sandbox"])
     ctx = b.new_context(viewport={"width": 1500, "height": 940})
@@ -28,9 +36,12 @@ with sync_playwright() as p:
     pg.wait_for_timeout(1000)
 
     # ---------- 0. 施工中拦截 ----------
-    for mod in ["news", "food", "salary", "report"]:
+    for mod in ["food", "salary", "report"]:
         pg.click(f'[data-module="{mod}"]'); pg.wait_for_timeout(420)
         chk(pg.locator(".wip h3").count() == 1 and pg.locator(".wip h3").inner_text() == "施工中", f"{mod} 显示施工中")
+    # 资讯已开发完成，不应再出现施工中占位
+    pg.click('[data-module="news"]'); pg.wait_for_timeout(600)
+    chk(pg.locator(".wip").count() == 0 and pg.locator(".board, .news-empty").count() > 0, "news 已脱离施工中")
     pg.screenshot(path=f"{SHOT}-wip.png")
 
     # ---------- 1. 项目&待办 ----------
@@ -53,8 +64,9 @@ with sync_playwright() as p:
     chk(pg.locator('#edProject').count() == 0, "项目编辑器不显示「所属项目」")
     pg.screenshot(path=f"{SHOT}-editor-project.png")
     pg.fill("#edTitleInput", "冒烟测试项目")
-    pg.fill("#edDue", "2026-11-05T18:30")
-    pg.fill("#edPlan", "2026-11-03T10:00")
+    # 日期是自绘控件，隐藏 input 才是真实值（UI 路径见 test/form_controls.py）
+    set_fc(pg, "edDue", "2026-11-05T18:30")
+    set_fc(pg, "edPlan", "2026-11-03T10:00")
     pg.click('[data-quad-pick="q2"]', force=True); pg.wait_for_timeout(200)
     pg.click('[data-tag-pick="评审"]', force=True); pg.wait_for_timeout(200)
     pg.click("#edTagNew", force=True); pg.fill("#edTagNew", "冒烟")

@@ -58,6 +58,12 @@ const P = {
   mail: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m3.5 7 8.5 6 8.5-6"/>',
   home: '<path d="M4 9.5 12 5l8 4.5"/><path d="M6 11v7h12v-7"/><path d="M10 18v-4h4v4"/>',
 
+  /* 资讯模块 */
+  bookmark: '<path d="M6.5 3h11a1 1 0 0 1 1 1v17l-6.5-4.2L5.5 21V4a1 1 0 0 1 1-1Z"/>',
+  star: '<path d="m12 3 2.7 5.7 6.2.9-4.5 4.3 1.1 6.1L12 17l-5.5 3 1.1-6.1L3.1 9.6l6.2-.9L12 3Z"/>',
+  rss: '<path d="M5 19h.1"/><path d="M5 12a7 7 0 0 1 7 7"/><path d="M5 5a14 14 0 0 1 14 14"/>',
+  globe: '<circle cx="12" cy="12" r="9"/><path d="M3.5 9h17M3.5 15h17"/><path d="M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18Z"/>',
+
   /* 待办模块 */
   pencil: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
   folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/>',

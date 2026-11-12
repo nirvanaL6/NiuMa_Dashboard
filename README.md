@@ -1,4 +1,4 @@
-# 打工人工作台 · v0.3（待办模块）
+# 打工人工作台 · v0.4（待办 + 资讯）
 
 新拟态（Neumorphism）风格的可交互高保真原型，含**两种使用模式**：免登录（数据只存本机）与登录（数据云端同步）。
 
@@ -91,11 +91,14 @@ worker-desk/
 │  ├─ todo-views.js  # 待办三视图：项目&待办 / 四宫格 / 概览
 │  ├─ todo-app.js    # 待办交互：编辑器、拖拽打标与排期、缩放
 │  ├─ store.js       # 数据层：免登录 / 云端两套模式共用读写，5s 防抖同步
-│  ├─ api.js         # Worker 接口封装 + PoW 求解器
+│  ├─ api.js         # Worker 接口封装 + Turnstile 人机验证
+│  ├─ news-model.js  # 资讯数据模型：订阅源 / 稍后读 / 收藏，条目索引
+│  ├─ news-views.js  # 资讯四视图：实时推荐 / 订阅话题 / 稍后读 / 收藏
+│  ├─ news-app.js    # 资讯交互：热榜拉取、订阅弹窗、书签与收藏切换
 │  ├─ auth.js        # 登录 / 注册 / 找回密码浮层
 │  └─ app.js         # 路由状态、转场、读秒引擎、搜索、设置、账户、备份
 ├─ server/
-│  ├─ src/           # index.js 路由 / api.js 业务 / crypto.js / mail.js / limits.js
+│  ├─ src/           # index.js 路由 / api.js 账号业务 / news.js 热榜与订阅解析
 │  ├─ migrations/    # D1 建表与索引
 │  ├─ scripts/       # build-assets.mjs 同步前端产物 / preflight.mjs 部署自检
 │  ├─ test/          # Node 直连 Worker 的 E2E（26 项）
@@ -149,6 +152,48 @@ Todo    { id, title, tags[], due, planAt, projectId, done, createdAt }
 
 可拖元素带 `data-drag-type="project|todo"` + `data-drag-id`，放置区带 `data-drop="quad:q1"` 或 `data-drop="day:2026-10-28"`。全部走 `document` 上的事件委托，视图重绘后无需重新绑定。
 
+## 资讯模块
+
+一级导航「资讯」下四个视图，热榜与订阅内容全部由 Worker 代抓（浏览器直连会被 CORS 与
+Referer 校验挡掉）。数据只有「订阅源 / 稍后读 / 收藏」落库，热榜本身每次现取。
+
+### 1. 实时推荐（`news:realtime`）
+
+微博热搜 / 百度热搜 / 知乎热榜 / 小红书热榜四列并列，移动端改为左右滑动。
+条目只显示序号、标题、热度，**不配图**，点击整条跳原文（新窗口 + `noopener`）。
+每个源独立超时与降级：某一列抓不到只影响那一列，显示原因和「重试」，不拖累其它三列。
+
+- 后端：`GET /api/news/hot`，Cache API + 进程内缓存 2 分钟
+- 数据源：微博 `ajax/statuses/hot_band`、百度 `top.baidu.com/api/board`、
+  知乎 `api.zhihu.com/topstory/hot-list`、小红书 `search/hot_list`
+
+### 2. 订阅话题（`news:topics`）
+
+支持 RSS 2.0 / Atom / JSON Feed，也可以直接填网站首页——页面里声明了
+`<link rel="alternate" type="application/rss+xml">` 会自动跟进去拿条目，
+没有订阅源时退化成「页面内文章链接」列表。每个源一张卡片，横向排列，移动端左右滑动；
+条目可带缩略图（`enclosure` / `media:content` / 正文首图）。
+
+- 后端：`POST /api/news/feed`，body `{ urls: [...] }`（单次最多 12 条，缓存 10 分钟）
+- 安全：只放行 http/https 与标准端口，拒绝 IP 字面量、`localhost`、`.internal`、
+  云元数据地址；手动跟随重定向并逐跳校验；响应体上限 700KB、8 秒超时
+
+### 3. 稍后读 / 4. 收藏（`news:later` / `news:fav`）
+
+条目右侧两个单图标：书签（稍后读）与星标（收藏）。点击后图标变为选中态，
+条目进入对应模块；**原条目、稍后读、收藏三处都能改状态**，取消即从该模块移除，
+两个状态互不影响。侧栏角标显示稍后读未读条数。
+
+存储结构（与待办同一份快照，登录后随云端同步）：
+
+```js
+news: {
+  subs:  [{ id, url, title, type: 'rss' | 'page', addedAt }],
+  later: [{ id, url, title, source, image, ts }],
+  fav:   [{ id, url, title, source, image, ts }],
+}
+```
+
 ## 结构与交互约定
 
 | 层级 | 位置 | 交互 |
@@ -176,7 +221,7 @@ Todo    { id, title, tags[], due, planAt, projectId, done, createdAt }
 ## 待确认（业务决策，未实现）
 
 1. 计薪规则目前为固定常量（月薪 12000 / 21.75 天 / 8 小时，午休不计薪）。规则页表单尚未与读秒引擎联动。
-2. 外卖券、资讯为本地示例数据，未接真实接口。
+2. 外卖券仍为本地示例数据；资讯已接真实热榜与订阅源（小红书接口对机房 IP 不稳定，失败时该列单独降级）。
 3. 通知中心、导入日历、导出 CSV 为占位交互；待办已支持「项目&待办 / 四宫格 / 概览」三视图。
 4. 同平台浏览器字体：优先 Manrope（数字/西文），中文回落 Noto Sans CJK / 苹方；若要完全离线，需将 Manrope 字体文件下载到本地。
 5. 验证码回显只在 `DEV_MODE=true` 时生效（仅本地 `.dev.vars`）。生产漏配 `RESEND_API_KEY` 会直接返回 503，不会假装发送成功。
@@ -193,6 +238,12 @@ python3 test/auth_flow.py
 
 # 前端 B：待办模块（三视图 + 新建/编辑 + 拖拽打标排期 + 四宫格互斥 + 缩放 + 施工中拦截）
 python3 test/todo_flow.py
+
+# 前端 C：资讯模块（43 项：四路热榜 / 跳转 / 稍后读与收藏联动 / 订阅增删 / 移动端横滑）
+python3 test/news.py
+
+# 后端解析单测（RSS / Atom / JSON Feed / 网页 / 四家热榜 / SSRF 防护）
+node server/test/news.unit.mjs
 ```
 
 两套前端脚本都要求先起静态服务器（8765）与 Worker（8787）。

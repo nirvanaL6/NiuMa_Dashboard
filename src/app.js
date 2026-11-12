@@ -12,6 +12,7 @@ import * as store from './store.js';
 import { authApi, stateApi, getToken, setToken, ApiError } from './api.js';
 import { mountAuth, refreshAccountUI, openAuth, closeAuth, currentUser as authUser, bootstrapSession, logout, setUser } from './auth.js';
 import { mountTodo, bindTodoEvents } from './todo-app.js';
+import { mountNews, bindNewsEvents, loadNewsView } from './news-app.js';
 import { confirmDialog } from './dialog.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -35,7 +36,9 @@ const state = {
 /* ---------------- 一级导航 ---------------- */
 function renderRail() {
   railNav.innerHTML = MODULES.map((m, i) => {
-    const badge = m.id === 'news' ? 3 : m.id === 'food' ? 6 : 0;
+    // 资讯角标改成「稍后读」真实条数，提醒还有多少没读
+    const badge = m.id === 'news' ? (store.getData().news?.later || []).length
+      : m.id === 'food' ? 6 : 0;
     return `<button class="rail__item" data-module="${m.id}" aria-current="${m.id === state.moduleId ? 'page' : 'false'}"
       aria-label="${m.label}（⌘${i + 1}）" title="${m.label} · ⌘${i + 1}">
       ${icon(m.icon, 21)}
@@ -130,7 +133,14 @@ function watchSubNavSize() {
 }
 
 /* ---------------- 视图渲染 + 转场 ---------------- */
-function renderStage(dir = 'forward', animate = true) {
+function renderStage(dir = 'forward', animate = true, opts = {}) {
+  // 资讯模块刷新数据后会整页重绘；用户这时往往正在看某一条，
+  // 需要把纵向滚动位置还回去（详见 news-app 的 refresh）。
+  const keepScroll = !!opts.keepScroll;
+  const prevTop = stage.scrollTop;
+  // 横向滚动的容器（四列热榜、订阅卡）在重绘后也要回到原位，
+  // 否则在手机上滑到小红书那一列点一下「稍后读」就被弹回第一列。
+  const prevX = keepScroll ? $$('[data-scrollx]', stage).map((el) => el.scrollLeft) : [];
   const html = renderView(state.moduleId, state.viewId);
   const next = document.createElement('section');
   next.className = 'view';
@@ -173,7 +183,10 @@ function renderStage(dir = 'forward', animate = true) {
   // 滚动容器由 .stage 承担（视图共用一套滚动条，避免切换时跳动）
   const scroller = stage;
   scroller.classList.add('scroll-y');
-  scroller.scrollTop = 0;
+  scroller.scrollTop = keepScroll ? prevTop : 0;
+  if (prevX.length) {
+    $$('[data-scrollx]', next).forEach((el, i) => { if (prevX[i]) el.scrollLeft = prevX[i]; });
+  }
 
   onViewMounted(next);
 }
@@ -244,6 +257,8 @@ function onViewMounted(root) {
   if (root.dataset.viewKey === 'salary:live') {
     startSalaryClock(root, 'full');
   }
+  // 资讯：进入视图时按需拉数据，拉完由 news-app 触发一次无动画重绘
+  if (root.dataset.viewKey.startsWith('news:')) loadNewsView(root.dataset.viewKey);
 }
 
 /* ---------------- 待办交互 ---------------- */
@@ -264,6 +279,21 @@ function newTodo(kind = 'todo') {
 let openTodoEditor = () => {};
 /** 由启动段注入（todo-app 的 openEditor），避免模块间循环依赖 */
 export function provideTodoEditor(fn) { openTodoEditor = fn; }
+
+/** 资讯角标：稍后读条数，随收藏/取消实时变化 */
+function refreshNewsBadge() {
+  const btn = railNav.querySelector('[data-module="news"]');
+  if (!btn) return;
+  const n = (store.getData().news?.later || []).length;
+  let dot = btn.querySelector('.rail__badge');
+  if (!n) { dot?.remove(); return; }
+  if (!dot) {
+    dot = document.createElement('span');
+    dot.className = 'rail__badge';
+    btn.appendChild(dot);
+  }
+  dot.textContent = String(n > 99 ? 99 : n);
+}
 
 /** 侧栏一级导航的未完成角标 */
 function refreshTodoBadge() {
@@ -906,6 +936,18 @@ mountTodo(todoEditor, {
 const todoApi = bindTodoEvents({ go, toast });
 provideTodoEditor(todoApi.openEditor);
 refreshTodoBadge();
+refreshNewsBadge();
+
+/* ---- 资讯模块：数据拉取 + 收藏/稍后读交互 ---- */
+mountNews({
+  onChange: (opts) => {
+    renderStage('forward', false, { keepScroll: !!opts?.keepScroll });
+    refreshNewsBadge();
+  },
+  toast,
+  go,
+});
+bindNewsEvents();
 
 // 恢复登录态（token 有效则切到 cloud 模式并拉取云端快照）
 bootstrapSession().then(async (me) => {

@@ -3,6 +3,7 @@
  */
 import { json } from './http.js';
 import * as api from './api.js';
+import { hotBoards, feedSources } from './news.js';
 
 /** 部署漏配项导致的错误：文案对外可见，便于一眼定位 */
 const CONFIG_ERRORS = new Set(['server_misconfigured', 'mail_not_configured']);
@@ -41,6 +42,8 @@ const ROUTES = [
   ['GET', '/api/backups', (env, req) => api.listBackups(env, req)],
   ['POST', '/api/backups/restore', (env, req, body) => api.restoreBackup(env, req, body?.id)],
   ['POST', '/api/account/delete', (env, req, body) => api.deleteAccount(env, req, body)],
+  ['GET', '/api/news/hot', (env, req) => hotBoards(env, new URL(req.url).searchParams.get('only') || '')],
+  ['POST', '/api/news/feed', (env, req, body) => feedSources(env, req, body)],
 ];
 
 export default {

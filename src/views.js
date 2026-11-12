@@ -7,6 +7,7 @@ import { MODULES } from './config.js';
 import { SCHEDULE, WEEK, NEWS, COUPONS, PRICE_COMPARE } from './data.js';
 import { getData } from './store.js';
 import { viewTodoList, viewTodoQuadrant, viewTodoOverview } from './todo-views.js';
+import { viewNewsRealtime, viewNewsTopics, viewNewsLater, viewNewsFav } from './news-views.js';
 import { QUADRANTS, quadOf, fmtDue } from './todo-model.js';
 import { renderSelectField, renderTimeField } from './form-controls.js';
 
@@ -186,82 +187,6 @@ function viewProgress() {
         <li>周五专注时长下降 22%，属正常回落<span class="when">正常</span></li>
       </div>
     </div>
-  </div>`;
-}
-
-/* =========================================================
-   资讯
-   ========================================================= */
-function viewNewsFeed() {
-  const lead = NEWS[0];
-  return `
-    <div class="view-actions">
-      <span class="segmented"><button class="is-active">热门</button><button>最新</button><button>订阅</button></span>
-      <button class="btn btn--ghost btn--sm">${icon('refresh', 14)} 刷新</button>
-    </div>
-
-  <div class="news-lead">
-    <article class="news-feature">
-      <div class="tag-row"><span class="chip chip--primary">${lead.topic}</span><span class="chip">热度 ${lead.hot}</span></div>
-      <h3>${lead.title}</h3>
-      <p>${lead.summary}</p>
-      <div class="foot">
-        <span>${lead.source}</span><span class="dot-line"></span><span>${lead.time}</span>
-        <span style="margin-left:auto">${icon('clock', 13)} 阅读约 4 分钟</span>
-      </div>
-    </article>
-    <div class="card" style="display:flex;flex-direction:column">
-      <div class="card-head"><h3 class="card-title">午休速览</h3><span class="card-sub">3 条 · 约 6 分钟</span></div>
-      <div class="news-list" style="flex:1">
-        ${NEWS.slice(1, 4).map((n) => `<div class="news-item" style="grid-template-columns:minmax(0,1fr) auto;padding:10px 4px">
-          <div><h4>${n.title}</h4><div class="meta"><span>${n.source}</span><span class="dot-line"></span><span>${n.time}</span></div>
-          <span class="card-sub">${icon('chevronRight', 14)}</span>
-        </div>`).join('')}
-      </div>
-    </div>
-  </div>
-  <div class="card">
-    <div class="card-head"><h3 class="card-title">全部动态</h3><span class="card-sub">共 ${NEWS.length} 条</span></div>
-    <div class="news-list">
-      ${NEWS.map((n) => `<div class="news-item">
-        <div class="heat">${n.hot}</div>
-        <div><h4>${n.title}</h4><div class="meta"><span class="chip" style="height:20px;font-size:10.5px">${n.topic}</span><span>${n.source}</span><span class="dot-line"></span><span>${n.time}</span></div>
-        <button class="btn btn--icon" style="width:30px;height:30px" aria-label="收藏：${n.title}" data-action="save-news">${icon('book', 14)}</button>
-      </div>`).join('')}
-    </div>
-  </div>`;
-}
-
-function viewNewsTopics() {
-  const topics = [
-    { n: '行业动态', c: 12, on: true }, { n: '职场生存', c: 8, on: true }, { n: '效率工具', c: 6, on: true },
-    { n: '外卖省钱', c: 4, on: false }, { n: '消费观察', c: 5, on: true }, { n: 'AI 与工作', c: 9, on: false },
-  ];
-  return `
-  <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr))">
-    ${topics.map((t) => `<div class="card" style="display:flex;align-items:center;gap:12px">
-      <span style="width:36px;height:36px;border-radius:12px;display:grid;place-items:center;box-shadow:var(--sh-in-sm);color:var(--primary)">${icon('layers', 17)}</span>
-      <div style="flex:1"><b style="font-size:13px">${t.n}</b><div class="card-sub">本周 ${t.c} 条</div></div>
-      <button class="switch" role="switch" aria-checked="${t.on}" aria-label="订阅 ${t.n}" data-action="toggle"></button>
-    </div>`).join('')}
-  </div>`;
-}
-
-function viewNewsSaved() {
-  return `
-  <div class="card">
-    <div class="news-list">
-      ${NEWS.slice(2, 5).map((n, i) => `<div class="news-item">
-        <div class="heat">${['4分', '9分', '6分'][i]}</div>
-        <div><h4>${n.title}</h4><div class="meta"><span>${n.source}</span><span class="dot-line"></span><span>已读 ${[0, 30, 65][i]}%</span></div>
-          <div class="meter" style="margin-top:8px;height:5px"><i style="--v:${[0, 30, 65][i]}%"></i></div>
-        </div>
-        <button class="btn btn--icon" style="width:30px;height:30px" aria-label="移除">${icon('close', 14)}</button>
-      </div>`).join('')}
-    </div>
-  </div>
-  <div class="card">
-    ${stateBlock({ title: '还有 3 篇已读完', desc: '归档到「历史阅读」，可在设置里导出为 Markdown', action: '<button class="btn btn--ghost btn--sm" style="margin-top:8px">查看归档</button>' })}
   </div>`;
 }
 
@@ -542,9 +467,10 @@ const VIEWS = {
   'todo:list': viewTodoList,
   'todo:quadrant': viewTodoQuadrant,
   'todo:overview': viewTodoOverview,
-  'news:feed': viewNewsFeed,
+  'news:realtime': viewNewsRealtime,
   'news:topics': viewNewsTopics,
-  'news:saved': viewNewsSaved,
+  'news:later': viewNewsLater,
+  'news:fav': viewNewsFav,
   'food:coupons': viewFoodCoupons,
   'food:compare': viewFoodCompare,
   'food:wallet': viewFoodWallet,
