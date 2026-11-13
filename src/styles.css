@@ -1627,7 +1627,8 @@ select.ed__input { appearance: none; cursor: pointer; }
 
 /* ---------- 热榜 ---------- */
 .board-row {
-  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  /* 列数随数据源数量自适应：某路源整体下架时不必改样式 */
+  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr);
   gap: 14px; align-items: start;
 }
 .board {

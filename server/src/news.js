@@ -2,8 +2,8 @@
  * 资讯模块数据通道
  *
  * 两个职责，都在 Worker 里完成（浏览器直连会被 CORS 与防盗链挡住）：
- *   1. 热榜聚合：微博 / 百度 / 知乎 / 小红书，各源独立超时与降级，
- *      单源挂掉不影响其它三列。
+ *   1. 热榜聚合：微博 / 百度 / 知乎 / 微信，各源独立超时与降级，
+ *      单源挂掉不影响其它几列。
  *   2. 订阅源抓取：RSS 2.0 / Atom / JSON Feed / 普通网页。
  *      网页会先找 <link rel="alternate" type="application/rss+xml">，
  *      找不到再退化成「页面里的文章链接列表」。
@@ -522,23 +522,36 @@ export function parseZhihu(json) {
     });
 }
 
-/** 小红书热榜：官方接口对机房 IP 不稳定，命中任意一个可用形状即可 */
-export function parseXhs(json) {
-  const box = json?.data || json;
-  const raw = box?.items || box?.hot_list || box?.list || box?.words || [];
-  return (Array.isArray(raw) ? raw : [])
-    .map((x, i) => {
-      const title = x?.title || x?.name || x?.word || x?.search_word || x?.query || '';
-      if (!title) return null;
-      const keyword = x?.search_word || x?.query || title;
-      return {
-        rank: i + 1,
-        title: String(title).trim(),
-        url: `https://www.xiaohongshu.com/search_result?keyword=${encodeURIComponent(keyword)}&source=web_search_result_notes`,
-        hot: fmtHot(x?.hot_value || x?.heat || x?.score || ''),
-      };
-    })
-    .filter(Boolean);
+/**
+ * 微信 24h 热文榜。
+ * 微信没有公开的「热文榜」接口：mp.weixin.qq.com 只按需返回单篇文章，且机房 IP 抓正文会被
+ * 「环境异常」风控拦住。榜单数据取今日热榜(tophub)聚合并回源到 mp.weixin.qq.com 的原文
+ * 链接——用户在自己浏览器打开不受机房风控影响。
+ * 页面是服务端渲染的表格，行结构：序号 | <a href=原文 标题> | 阅读数 | 详情
+ */
+export function parseWechatHot(html) {
+  const seen = new Set();
+  const out = [];
+  for (const m of String(html || '').matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)) {
+    const row = m[1];
+    const link = row.match(/<a\s[^>]*href="(https?:\/\/mp\.weixin\.qq\.com\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/i);
+    if (!link) continue;
+    // 标题里的 <em>/<span> 只是关键词高亮，去标签时不能补空格，否则「恭喜</em>当年」会断词
+    const title = decodeEntities(link[2].replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim();
+    if (!title) continue;
+    // 原文带 #rd 锚点，去掉便于去重与比对
+    const url = decodeEntities(link[1]).replace(/#rd$/, '');
+    if (seen.has(url)) continue;
+    seen.add(url);
+    const read = row.match(/<td[^>]*class="[^"]*\bws\b[^"]*"[^>]*>([\s\S]*?)<\/td>/i);
+    out.push({
+      rank: out.length + 1,
+      title,
+      url,
+      hot: read ? cleanText(read[1]) : '',
+    });
+  }
+  return out;
 }
 
 const HOT_SOURCES = [
@@ -563,25 +576,18 @@ const HOT_SOURCES = [
     },
   },
   {
-    id: 'xhs', label: '小红书热榜', accent: '#ff2442', home: 'https://www.xiaohongshu.com/explore',
+    id: 'wechat', label: '微信热文', accent: '#22b573', home: 'https://mp.weixin.qq.com/',
     async load() {
-      const headers = { referer: 'https://www.xiaohongshu.com/explore', origin: 'https://www.xiaohongshu.com' };
-      const tries = [
-        'https://www.xiaohongshu.com/api/sns/web/v1/search/hot_list',
-        'https://www.xiaohongshu.com/web_api/sns/v1/search/hot_word',
-      ];
-      let last = null;
-      for (const u of tries) {
-        try {
-          const items = parseXhs(await getJson(u, headers));
-          if (items.length) return items;
-          last = new ApiError('bad_content', '该源返回空榜单', 502);
-        } catch (err) {
-          last = err;
-        }
-      }
-      void last;
-      throw new ApiError('source_unavailable', '小红书榜单暂不可用，可稍后重试', 502);
+      const { text } = await fetchLimited('https://tophub.today/n/WnBe01o371', {
+        headers: {
+          accept: 'text/html,application/xhtml+xml',
+          'accept-language': 'zh-CN,zh;q=0.9',
+          referer: 'https://tophub.today/',
+        },
+      });
+      const items = parseWechatHot(text);
+      if (!items.length) throw new ApiError('bad_content', '该源返回空榜单', 502);
+      return items;
     },
   },
 ];

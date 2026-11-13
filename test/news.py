@@ -39,7 +39,7 @@ HOT = {
         board("weibo", "微博热搜", "#f43f5e"),
         board("baidu", "百度热搜", "#3b82f6"),
         board("zhihu", "知乎热榜", "#6366f1"),
-        board("xhs", "小红书热榜", "#ff2442", n=0, error="数据源暂无榜单"),
+        board("wechat", "微信热文", "#07c160", n=0, error="数据源暂无榜单"),
     ],
 }
 
@@ -134,7 +134,11 @@ with sync_playwright() as p:
     chk(pg.locator(".board").nth(0).locator(".ni").count() == 10, "每个榜单首屏 10 条")
     chk(pg.locator('.board[data-board="weibo"] .board__more').inner_text().strip() == "展开全部 12 条",
         "超出部分给出展开入口")
-    chk(pg.locator('.board[data-board="xhs"] .board__empty').count() == 1, "失败的数据源单独显示占位与重试")
+    chk(pg.locator('.board[data-board="wechat"] .board__empty').count() == 1, "失败的数据源单独显示占位与重试")
+
+    # 列宽随数据源数量自适应：只剩 3 源时不能留空列
+    widths = pg.eval_on_selector_all(".board", "els => els.map(e => Math.round(e.getBoundingClientRect().width))")
+    chk(len(set(widths)) == 1 and widths[0] > 200, f"四列等宽铺满（w={widths[0]}）")
 
     first = pg.locator('.board[data-board="weibo"] .ni').nth(0)
     chk(first.locator("a.ni__link").get_attribute("target") == "_blank", "条目链接新窗口打开")
@@ -248,7 +252,7 @@ with sync_playwright() as p:
     mp.click('[data-module="news"]')
     mp.wait_for_timeout(900)
     dims = mp.evaluate("() => { const r = document.querySelector('[data-board-row]'); return { w: r.clientWidth, sw: r.scrollWidth }; }")
-    chk(dims["sw"] > dims["w"] + 50, f"移动端四列改为左右滑（{dims}）")
+    chk(dims["sw"] > dims["w"] + 50, f"移动端热榜改为左右滑（{dims}）")
     mp.evaluate("() => { document.querySelector('[data-board-row]').scrollLeft = 600; }")
     mp.wait_for_timeout(200)
     mp.locator('.board').nth(2).locator(".ni").nth(0).locator('[data-news-act="later"]').click()

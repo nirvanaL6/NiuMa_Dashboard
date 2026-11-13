@@ -4,7 +4,7 @@
  */
 import {
   parseRss, parseAtom, parseJsonFeed, parsePage,
-  parseWeibo, parseBaidu, parseZhihu, parseXhs,
+  parseWeibo, parseBaidu, parseZhihu, parseWechatHot,
   assertPublicUrl, hashId, cleanText,
 } from '../src/news.js';
 
@@ -123,9 +123,20 @@ ok(zhihu.length === 2, '知乎解析两条');
 ok(zhihu[0].url === 'https://www.zhihu.com/question/1', `知乎 API 域名换成人读地址（${zhihu[0].url}）`);
 ok(zhihu[0].hot === '4378万', `知乎热度去掉「热度」（${zhihu[0].hot}）`);
 
-const xhs = parseXhs({ data: { items: [{ title: '小红书热点', hot_value: 880000 }] } });
-ok(xhs.length === 1 && xhs[0].url.includes('search_result?keyword='), '小红书条目拼搜索链接');
-ok(xhs[0].hot === '88万', `小红书热度格式化（${xhs[0].hot}）`);
+const wxHtml = `<table><tbody>
+<tr><td align="center">1.</td><td><a href="https://mp.weixin.qq.com/s?__biz=AAA&amp;mid=1&amp;idx=1&amp;sn=x#rd" target="_blank" itemid="1001">苹果最终确认！向每位用户最高赔&nbsp;637&nbsp;元</a></td><td class="ws">10.0万</td><td align="right"><a href="x" title="查看详细"></a></td></tr>
+<tr><td align="center">2.</td><td><a href="https://mp.weixin.qq.com/s?__biz=BBB&amp;mid=2&amp;idx=1&amp;sn=y#rd" itemid="1002"><em>恭喜</em>当年办了 <span>ETC</span> 的车主</a></td><td class="ws">9.8万</td><td></td></tr>
+<tr><td align="center">3.</td><td><a href="https://mp.weixin.qq.com/s?__biz=AAA&amp;mid=1&amp;idx=1&amp;sn=x#rd" itemid="1001">重复条目</a></td><td class="ws">10.0万</td><td></td></tr>
+<tr><td colspan="4">广告或空行</td></tr>
+</tbody></table>`;
+const wx = parseWechatHot(wxHtml);
+ok(wx.length === 2, `微信热文去重、跳过非条目行（${wx.length}）`);
+ok(wx[0].title === '苹果最终确认！向每位用户最高赔 637 元', `微信标题解实体并压缩空白（${wx[0].title}）`);
+ok(wx[1].title === '恭喜当年办了 ETC 的车主', `微信标题去标签（${wx[1].title}）`);
+ok(wx[0].url === 'https://mp.weixin.qq.com/s?__biz=AAA&mid=1&idx=1&sn=x', `微信原文链接解 &amp; 并去 #rd（${wx[0].url}）`);
+ok(wx[0].hot === '10.0万', `微信阅读数（${wx[0].hot}）`);
+ok(wx[0].rank === 1 && wx[1].rank === 2, '微信重新编号连续');
+ok(parseWechatHot('<html>环境异常</html>').length === 0, '微信解析对无效页面返回空而非报错');
 
 /* ---------------- SSRF ---------------- */
 const blocked = [

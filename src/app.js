@@ -138,8 +138,8 @@ function renderStage(dir = 'forward', animate = true, opts = {}) {
   // 需要把纵向滚动位置还回去（详见 news-app 的 refresh）。
   const keepScroll = !!opts.keepScroll;
   const prevTop = stage.scrollTop;
-  // 横向滚动的容器（四列热榜、订阅卡）在重绘后也要回到原位，
-  // 否则在手机上滑到小红书那一列点一下「稍后读」就被弹回第一列。
+  // 横向滚动的容器（热榜列、订阅卡）在重绘后也要回到原位，
+  // 否则在手机上滑到后面几列点一下「稍后读」就被弹回第一列。
   const prevX = keepScroll ? $$('[data-scrollx]', stage).map((el) => el.scrollLeft) : [];
   const html = renderView(state.moduleId, state.viewId);
   const next = document.createElement('section');

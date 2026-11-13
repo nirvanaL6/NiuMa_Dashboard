@@ -42,7 +42,7 @@ export const MODULES = [
     desc: '实时热门与资讯订阅，一屏看完今天在讨论什么',
     ready: true,
     views: [
-      { id: 'realtime', label: '实时推荐', icon: 'flame', hint: '微博、百度、知乎、小红书四路热榜并列' },
+      { id: 'realtime', label: '实时推荐', icon: 'flame', hint: '微博、百度、知乎、微信四路热榜并列' },
       { id: 'topics', label: '订阅话题', icon: 'rss', hint: '订阅 RSS 或网页，按源分框展示' },
       { id: 'later', label: '稍后读', icon: 'bookmark', hint: '标记了但还没读的内容' },
       { id: 'fav', label: '收藏', icon: 'star', hint: '值得留档的条目' },
