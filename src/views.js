@@ -4,7 +4,7 @@
  */
 import { icon } from './icons.js';
 import { MODULES } from './config.js';
-import { WEEK, COUPONS, PRICE_COMPARE } from './data.js';
+import { COUPONS, PRICE_COMPARE } from './data.js';
 import { getData } from './store.js';
 import { viewTodoList, viewTodoQuadrant, viewTodoOverview } from './todo-views.js';
 import { viewNewsRealtime, viewNewsTopics, viewNewsLater, viewNewsFav } from './news-views.js';
@@ -57,41 +57,6 @@ function stateBlock({ kind = 'empty', title, desc, action = '' }) {
    避免总览越长越把这个文件撑得没法读 */
 function viewOverview() {
   return viewOverviewHome();
-}
-
-function viewProgress() {
-  const max = Math.max(...WEEK.map((w) => w.hours));
-  return `
-    <div class="view-actions">
-      <span class="segmented"><button class="is-active">本周</button><button>上周</button></span>
-    </div>
-  <div class="grid grid--12">
-    ${WEEK.map((w, i) => `<div class="col-3 calc-card">
-      <div class="k"><span class="ico">${icon('clock', 14)}</span>${w.d}</div>
-      <div class="v">${w.hours.toFixed(1)}<small>h 专注</small></div>
-      <div class="d">完成 ${w.done} 件 · 负载 ${w.load}%</div>
-      ${spark([20 + i * 4, 34, 26 + i * 3, 44, 38 + i * 2, 52, 48], 'var(--primary)')}
-    </div>`).join('')}
-    <div class="col-4"></div>
-    <div class="col-8 card">
-      <div class="card-head"><h3 class="card-title">每日专注时长</h3><span class="card-sub">目标 6h / 天</span></div>
-      <div style="display:flex;align-items:flex-end;gap:18px;height:170px;padding-top:8px">
-        ${WEEK.map((w) => `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:8px">
-          <span style="font-size:11.5px;font-weight:700">${w.hours}h</span>
-          <span style="width:100%;max-width:46px;height:${(w.hours / max) * 120}px;border-radius:10px;background:linear-gradient(180deg,var(--primary-soft),var(--primary));box-shadow:4px 4px 10px rgba(99,102,241,.25)"></span>
-          <span style="font-size:11px;color:var(--ink-3)">${w.d}</span>
-        </div>`).join('')}
-      </div>
-    </div>
-    <div class="col-4 card">
-      <div class="card-head"><h3 class="card-title">提醒</h3></div>
-      <div class="mini-list">
-        <li>周二负载 86%，建议把 2 件 P2 调到周五<span class="when">建议</span></li>
-        <li>连续 3 天有 14:00 的会，午休被切碎<span class="when">观察</span></li>
-        <li>周五专注时长下降 22%，属正常回落<span class="when">正常</span></li>
-      </div>
-    </div>
-  </div>`;
 }
 
 /* =========================================================
@@ -367,7 +332,6 @@ function viewReportSpend() {
 
 const VIEWS = {
   'overview:today': viewOverview,
-  'overview:progress': viewProgress,
   'todo:list': viewTodoList,
   'todo:quadrant': viewTodoQuadrant,
   'todo:overview': viewTodoOverview,

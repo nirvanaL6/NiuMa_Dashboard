@@ -14,9 +14,9 @@ export const MODULES = [
     title: '总览',
     desc: '自定义总览页',
     ready: true,
+    // 总览只有一个视图，不需要二级导航（渲染层 views.length < 2 时自动隐藏）
     views: [
       { id: 'today', label: '速览', icon: 'overview', hint: '北京时间、当日待办、资讯速览、快捷入口四块并列' },
-      { id: 'progress', label: '本周节奏', icon: 'chart', hint: '周一到周五的专注时长与任务完成率' },
     ],
   },
   {

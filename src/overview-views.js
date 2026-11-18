@@ -32,18 +32,18 @@ function clockHTML() {
 
 function cardClock() {
   const c = clockHTML();
-  return `<section class="ov-card ov-clock" aria-labelledby="ovClockTitle">
-    <header class="ov-card__head">
+  return `<section class="ovw-card ovw-clock" aria-labelledby="ovClockTitle">
+    <header class="ovw-card__head">
       <h3 id="ovClockTitle">${icon('clock', 14)} 标准北京时间</h3>
-      <span class="ov-tag">UTC+8</span>
+      <span class="ovw-tag">UTC+8</span>
     </header>
-    <div class="ov-clock__face">
-      <b class="ov-clock__hm" data-ov-clock="hm">${c.hm}</b>
-      <i class="ov-clock__s" data-ov-clock="s">${c.s}</i>
+    <div class="ovw-clock__face">
+      <b class="ovw-clock__hm" data-ov-clock="hm">${c.hm}</b>
+      <i class="ovw-clock__s" data-ov-clock="s">${c.s}</i>
     </div>
-    <p class="ov-clock__date">
+    <p class="ovw-clock__date">
       <span data-ov-clock="date">${c.date}</span>
-      <span class="ov-dot"></span>
+      <span class="ovw-dot"></span>
       <span data-ov-clock="week">${c.week}</span>
     </p>
   </section>`;
@@ -54,18 +54,18 @@ function cardClock() {
 /* ------------------------------------------------------------------ */
 function todoRow(t) {
   const q = quadMetaOf(t);
-  const when = t.due ? fmtDue(t.due) : t.planAt ? fmtDue(t.planAt) : '';
-  return `<li class="ov-todo${t.__late ? ' is-late' : ''}" data-todo-row="${attr(t.id)}">
+  const when = t.__at ? fmtDue(t.__at) : '';
+  return `<li class="ovw-todo${t.__late ? ' is-late' : ''}" data-todo-row="${attr(t.id)}">
     <button type="button" class="check" data-toggle-todo="${attr(t.id)}"
       role="checkbox" aria-checked="false" aria-label="标记完成：${attr(t.title)}">
       ${icon('check', 11, 2.6)}
     </button>
-    <span class="ov-todo__body">
-      <b class="ov-todo__t" title="${attr(t.title)}">${esc(t.title)}</b>
-      <span class="ov-todo__m">
-        ${t.__late ? `<em class="ov-late">已逾期</em>` : ''}
-        ${when ? `<span>${esc(when)}</span>` : '<span class="ov-muted">未排时间</span>'}
-        ${q ? `<span class="ov-prio" style="--c:${q.accent}"><i></i>${q.label}</span>` : ''}
+    <span class="ovw-todo__body">
+      <b class="ovw-todo__t" title="${attr(t.title)}">${esc(t.title)}</b>
+      <span class="ovw-todo__m">
+        ${t.__late ? `<em class="ovw-late">已逾期</em>` : ''}
+        ${when ? `<span>${esc(when)}</span>` : '<span class="ovw-muted">未排时间</span>'}
+        ${q ? `<span class="ovw-prio" style="--c:${q.accent}"><i></i>${q.label}</span>` : ''}
       </span>
     </span>
   </li>`;
@@ -75,21 +75,21 @@ function cardTodos() {
   const list = todayTodos();
   const st = todayStats();
   const pct = st.total ? Math.round((st.done / st.total) * 100) : 0;
-  return `<section class="ov-card ov-todos" aria-labelledby="ovTodoTitle">
-    <header class="ov-card__head">
+  return `<section class="ovw-card ovw-todos" aria-labelledby="ovTodoTitle">
+    <header class="ovw-card__head">
       <h3 id="ovTodoTitle">${icon('check', 14, 2.4)} 当日待办</h3>
-      <span class="ov-card__meta">${st.done}/${st.total} 已完成</span>
+      <span class="ovw-card__meta">${st.done}/${st.total} 已完成</span>
     </header>
-    <div class="ov-bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"
+    <div class="ovw-bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"
       aria-label="今日完成度 ${pct}%"><i style="--v:${pct}%"></i></div>
     ${list.length
-      ? `<ul class="ov-todo-list">${list.map(todoRow).join('')}</ul>`
-      : `<div class="ov-empty ov-empty--sm">
+      ? `<ul class="ovw-todo-list">${list.map(todoRow).join('')}</ul>`
+      : `<div class="ovw-empty ovw-empty--sm">
           ${icon('inbox', 20, 1.6)}
           <p>今天没有待办，享受一下。</p>
           <button type="button" class="btn btn--ghost btn--sm" data-jump="todo">去排几件</button>
         </div>`}
-    <footer class="ov-card__foot">
+    <footer class="ovw-card__foot">
       <a href="#" data-jump="todo">全部待办 ${icon('chevronRight', 12)}</a>
     </footer>
   </section>`;
@@ -102,21 +102,21 @@ function hotBlock(src) {
   const board = (newsState.hot?.boards || []).find((b) => b.id === src.id);
   if (!board) return linkBlock(src, '');
   if (board.error) {
-    return `<div class="ov-src">
-      <div class="ov-src__head"><span class="ov-src__dot" style="--c:${src.accent}"></span><b>${esc(src.label)}</b></div>
-      <p class="ov-src__err">${esc(board.error)}</p>
+    return `<div class="ovw-src">
+      <div class="ovw-src__head"><span class="ovw-src__dot" style="--c:${src.accent}"></span><b>${esc(src.label)}</b></div>
+      <p class="ovw-src__err">${esc(board.error)}</p>
     </div>`;
   }
-  return `<div class="ov-src">
-    <div class="ov-src__head">
-      <span class="ov-src__dot" style="--c:${src.accent}"></span><b>${esc(src.label)}</b>
-      <span class="ov-src__more">${board.items.length} 条</span>
+  return `<div class="ovw-src">
+    <div class="ovw-src__head">
+      <span class="ovw-src__dot" style="--c:${src.accent}"></span><b>${esc(src.label)}</b>
+      <span class="ovw-src__more">${board.items.length} 条</span>
     </div>
-    <ul class="ov-src__list">
+    <ul class="ovw-src__list">
       ${board.items.slice(0, SOURCE_PREVIEW).map((it) => `<li>
         <a href="${attr(it.url)}" target="_blank" rel="noopener noreferrer" title="${attr(it.title)}">
-          <span class="ov-rank${it.rank <= 3 ? ' is-top' : ''}">${it.rank}</span>
-          <span class="ov-src__t">${esc(it.title)}</span>
+          <span class="ovw-rank${it.rank <= 3 ? ' is-top' : ''}">${it.rank}</span>
+          <span class="ovw-src__t">${esc(it.title)}</span>
         </a>
       </li>`).join('')}
     </ul>
@@ -126,19 +126,19 @@ function hotBlock(src) {
 function linkBlock(src, err) {
   const src2 = newsState.feeds[src.url] || {};
   const items = src2.items || [];
-  const head = `<div class="ov-src__head">
-    <span class="ov-src__dot" style="--c:${src.accent}"></span><b>${esc(src.label)}</b>
-    ${items.length ? `<span class="ov-src__more">${items.length} 条</span>` : ''}
+  const head = `<div class="ovw-src__head">
+    <span class="ovw-src__dot" style="--c:${src.accent}"></span><b>${esc(src.label)}</b>
+    ${items.length ? `<span class="ovw-src__more">${items.length} 条</span>` : ''}
   </div>`;
-  if (err || src2.error) return `<div class="ov-src">${head}<p class="ov-src__err">${esc(err || src2.error)}</p></div>`;
-  if (!items.length) return `<div class="ov-src">${head}<p class="ov-src__err">还没有内容</p></div>`;
-  return `<div class="ov-src">${head}
-    <ul class="ov-src__list">
+  if (err || src2.error) return `<div class="ovw-src">${head}<p class="ovw-src__err">${esc(err || src2.error)}</p></div>`;
+  if (!items.length) return `<div class="ovw-src">${head}<p class="ovw-src__err">还没有内容</p></div>`;
+  return `<div class="ovw-src">${head}
+    <ul class="ovw-src__list">
       ${items.slice(0, SOURCE_PREVIEW).map((it) => `<li>
         <a href="${attr(it.url)}" target="_blank" rel="noopener noreferrer" title="${attr(it.title)}">
-          <span class="ov-rank ov-rank--dot"></span>
-          <span class="ov-src__t">${esc(it.title)}</span>
-          <span class="ov-src__time">${esc(relTime(it.ts))}</span>
+          <span class="ovw-rank ovw-rank--dot"></span>
+          <span class="ovw-src__t">${esc(it.title)}</span>
+          <span class="ovw-src__time">${esc(relTime(it.ts))}</span>
         </a>
       </li>`).join('')}
     </ul>
@@ -150,23 +150,23 @@ function sourcePicker() {
   const picked = new Set(getOverview().sources);
   const all = allSources();
   const feeds = all.filter((s) => s.kind === 'feed');
-  return `<div class="ov-picker" data-ov-picker hidden>
-    <div class="ov-picker__hd">选择要显示的资讯列表</div>
-    <div class="ov-picker__grid">
-      ${all.filter((s) => s.kind === 'hot').map((s) => `<label class="ov-opt">
+  return `<div class="ovw-picker" data-ov-picker hidden>
+    <div class="ovw-picker__hd">选择要显示的资讯列表</div>
+    <div class="ovw-picker__grid">
+      ${all.filter((s) => s.kind === 'hot').map((s) => `<label class="ovw-opt">
         <input type="checkbox" data-ov-src="${attr(s.id)}" ${picked.has(s.id) ? 'checked' : ''} />
-        <span class="ov-opt__box">${icon('check', 11, 2.8)}</span>
+        <span class="ovw-opt__box">${icon('check', 11, 2.8)}</span>
         <span>${esc(s.label)}</span>
       </label>`).join('')}
     </div>
-    ${feeds.length ? `<div class="ov-picker__hd">已订阅</div>
-      <div class="ov-picker__grid">
-        ${feeds.map((s) => `<label class="ov-opt">
+    ${feeds.length ? `<div class="ovw-picker__hd">已订阅</div>
+      <div class="ovw-picker__grid">
+        ${feeds.map((s) => `<label class="ovw-opt">
           <input type="checkbox" data-ov-src="${attr(s.id)}" ${picked.has(s.id) ? 'checked' : ''} />
-          <span class="ov-opt__box">${icon('check', 11, 2.8)}</span>
+          <span class="ovw-opt__box">${icon('check', 11, 2.8)}</span>
           <span title="${attr(s.label)}">${esc(s.label)}</span>
         </label>`).join('')}
-      </div>` : `<p class="ov-picker__tip">在「资讯 → 订阅话题」里添加 RSS 源后，这里会多出可选项。</p>`}
+      </div>` : `<p class="ovw-picker__tip">在「资讯 → 订阅话题」里添加 RSS 源后，这里会多出可选项。</p>`}
   </div>`;
 }
 
@@ -174,28 +174,28 @@ function cardNews() {
   const active = activeSources();
   const loading = newsState.hotLoading;
   const err = newsState.hotError;
-  return `<section class="ov-card ov-news" aria-labelledby="ovNewsTitle">
-    <header class="ov-card__head">
+  return `<section class="ovw-card ovw-news" aria-labelledby="ovNewsTitle">
+    <header class="ovw-card__head">
       <h3 id="ovNewsTitle">${icon('flame', 14)} 资讯速览</h3>
-      <span class="ov-card__acts">
-        <button type="button" class="ov-iconbtn" data-ov-act="pick-src" aria-expanded="false"
+      <span class="ovw-card__acts">
+        <button type="button" class="ovw-iconbtn" data-ov-act="pick-src" aria-expanded="false"
           title="选择显示的资讯列表" aria-label="选择显示的资讯列表">${icon('filter', 14)}</button>
-        <button type="button" class="ov-iconbtn ${loading ? 'is-spin' : ''}" data-ov-act="refresh-news"
+        <button type="button" class="ovw-iconbtn ${loading ? 'is-spin' : ''}" data-ov-act="refresh-news"
           title="刷新" aria-label="刷新资讯">${icon('refresh', 14)}</button>
       </span>
     </header>
     ${sourcePicker()}
     ${!active.length
-      ? `<div class="ov-empty ov-empty--sm">
+      ? `<div class="ovw-empty ovw-empty--sm">
           ${icon('filter', 20, 1.6)}
           <p>还没选择要显示的资讯列表。</p>
           <button type="button" class="btn btn--ghost btn--sm" data-ov-act="pick-src">去选</button>
         </div>`
       : loading && !newsState.hot
-        ? `<div class="ov-skel">${Array.from({ length: 4 }, (_, i) => `<span class="sk" style="width:${92 - i * 9}%"></span>`).join('')}</div>`
-        : `<div class="ov-srcs">${active.map((s) => (s.kind === 'hot' ? hotBlock(s) : linkBlock(s))).join('')}</div>`}
-    ${err ? `<p class="ov-news__err">${esc(err)}<button type="button" class="btn btn--ghost btn--sm" data-ov-act="refresh-news">重试</button></p>` : ''}
-    <footer class="ov-card__foot">
+        ? `<div class="ovw-skel">${Array.from({ length: 4 }, (_, i) => `<span class="sk" style="width:${92 - i * 9}%"></span>`).join('')}</div>`
+        : `<div class="ovw-srcs">${active.map((s) => (s.kind === 'hot' ? hotBlock(s) : linkBlock(s))).join('')}</div>`}
+    ${err ? `<p class="ovw-news__err">${esc(err)}<button type="button" class="btn btn--ghost btn--sm" data-ov-act="refresh-news">重试</button></p>` : ''}
+    <footer class="ovw-card__foot">
       <a href="#" data-jump="news">完整资讯 ${icon('chevronRight', 12)}</a>
     </footer>
   </section>`;
@@ -213,27 +213,27 @@ const accentOf = (s) => {
 
 function cardLinks() {
   const { links } = getOverview();
-  return `<section class="ov-card ov-links" aria-labelledby="ovLinksTitle">
-    <header class="ov-card__head">
+  return `<section class="ovw-card ovw-links" aria-labelledby="ovLinksTitle">
+    <header class="ovw-card__head">
       <h3 id="ovLinksTitle">${icon('layers', 14)} 快捷入口</h3>
-      <span class="ov-card__acts">
-        <button type="button" class="ov-iconbtn" data-ov-act="add-link"
+      <span class="ovw-card__acts">
+        <button type="button" class="ovw-iconbtn" data-ov-act="add-link"
           title="添加快捷入口" aria-label="添加快捷入口">${icon('plus', 14, 2.6)}</button>
       </span>
     </header>
     ${links.length
-      ? `<div class="ov-linkgrid">
-          ${links.map((l) => `<div class="ov-link" style="--c:${accentOf(l.title)}">
+      ? `<div class="ovw-linkgrid">
+          ${links.map((l) => `<div class="ovw-link" style="--c:${accentOf(l.title)}">
             <a href="${attr(l.url)}" target="_blank" rel="noopener noreferrer" title="${attr(l.url)}">
-              <span class="ov-link__badge">${esc((l.title || '?').slice(0, 1).toUpperCase())}</span>
-              <span class="ov-link__txt"><b>${esc(l.title)}</b><i>${esc(hostOf(l.url))}</i></span>
+              <span class="ovw-link__badge">${esc((l.title || '?').slice(0, 1).toUpperCase())}</span>
+              <span class="ovw-link__txt"><b>${esc(l.title)}</b><i>${esc(hostOf(l.url))}</i></span>
               ${icon('arrowUpRight', 13)}
             </a>
-            <button type="button" class="ov-link__x" data-ov-act="del-link" data-ov-id="${attr(l.id)}"
+            <button type="button" class="ovw-link__x" data-ov-act="del-link" data-ov-id="${attr(l.id)}"
               title="删除" aria-label="删除 ${attr(l.title)}">${icon('close', 11)}</button>
           </div>`).join('')}
         </div>`
-      : `<div class="ov-empty">
+      : `<div class="ovw-empty">
           ${icon('globe', 22, 1.5)}
           <p>把常去的网站、内部系统挂在这里，一点就到。</p>
           <button type="button" class="btn btn--ghost btn--sm" data-ov-act="add-link">
@@ -249,8 +249,8 @@ export function viewOverviewHome() {
   // 行高由较高者决定，会把左下的待办一路推到资讯卡下面。分列后左右互不影响，
   // 正好满足「宽度一致、高度各随内容」。移动端退化成单列时，
   // DOM 顺序天然就是 时钟 → 待办 → 资讯 → 入口。
-  return `<div class="ov-grid">
-    <div class="ov-col">${cardClock()}${cardTodos()}</div>
-    <div class="ov-col">${cardNews()}${cardLinks()}</div>
+  return `<div class="ovw-grid">
+    <div class="ovw-col">${cardClock()}${cardTodos()}</div>
+    <div class="ovw-col">${cardNews()}${cardLinks()}</div>
   </div>`;
 }

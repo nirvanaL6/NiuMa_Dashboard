@@ -116,32 +116,40 @@ export function activeSources() {
 /* 今日待办                                                            */
 /* ------------------------------------------------------------------ */
 
-const timeOf = (t) => {
-  const v = t.due || t.planAt || '';
-  const m = String(v).match(/T(\d{2}:\d{2})/);
+const clockOf = (v) => {
+  const m = String(v || '').match(/T(\d{2}:\d{2})/);
   return m ? m[1] : '';
 };
 
+const todayKey = (now) => dayKey(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`);
+
 /**
- * 今天的待办：今天到期 / 今天计划 / 已逾期仍未完成。
+ * 今天的待办：今天计划 / 今天到期 / 已逾期仍未完成。
  *
- * 「当日」的判定用 due 优先、planAt 兜底——待办可能只排了日期没排具体时间，
- * 也可能只写了截止时间，两种都要能落到今天这一栏。
+ * 「当日」的判定必须同时看 due 和 planAt，两者是**或**关系：
+ * 计划在今天、截止在下周的任务也是今天该做的（历史 bug：只看 due，
+ * 这类任务在总览里直接消失）。逾期只认截止时间——没写截止时间的，
+ * 退回计划日期判断（计划日已过 = 还没做完的老账）。
  */
 export function todayTodos(now = new Date()) {
-  const today = dayKey(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`);
+  const today = todayKey(now);
   const list = (store.getData().todos || []).filter((t) => !t.done);
   const picked = [];
   for (const t of list) {
-    const day = dayKey(t.due) || dayKey(t.planAt);
-    if (!day) continue;
-    if (day === today) picked.push({ ...t, __late: false });
-    else if (day < today) picked.push({ ...t, __late: true });
+    const dueDay = dayKey(t.due);
+    const planDay = dayKey(t.planAt);
+    const late = (!!dueDay && dueDay < today) || (!dueDay && !!planDay && planDay < today);
+    const isToday = dueDay === today || planDay === today;
+    if (!isToday && !late) continue;
+    // 卡片上显示今天这一栏对应的时间：优先今天排的计划时间，其次今天到期的截止时间；
+    // 逾期条目沿用原来的截止时间，让「晚了多久」看得出来
+    const at = (planDay === today && t.planAt) || (dueDay === today && t.due) || (late ? t.due || t.planAt : '') || t.due || t.planAt;
+    picked.push({ ...t, __late: late, __at: at });
   }
   picked.sort((a, b) => {
     // 逾期的最前面；同组内按时间，没有时间的排后面
     if (a.__late !== b.__late) return a.__late ? -1 : 1;
-    const ta = timeOf(a), tb = timeOf(b);
+    const ta = clockOf(a.__at), tb = clockOf(b.__at);
     if (ta && tb) return ta < tb ? -1 : ta > tb ? 1 : 0;
     if (ta) return -1;
     if (tb) return 1;
@@ -154,10 +162,17 @@ export function quadMetaOf(t) {
   return QUADRANTS.find((q) => q.id === quadOf(t.tags)) || null;
 }
 
-/** 今日进度：完成数 / 今天该做的总数（含已完成的，用来画进度条） */
+/**
+ * 今日进度：已完成 / 今天要做完的总数。
+ *
+ * 分母用「今天该做的（含逾期未完成的）+ 今天已完成」，与列表口径保持一致——
+ * 否则卡片上写「4 条待办」，进度条却按 3 条算，比例看着就不对。
+ */
 export function todayStats(now = new Date()) {
-  const todayStr = dayKey(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`);
-  const all = (store.getData().todos || []).filter((t) => (dayKey(t.due) || dayKey(t.planAt)) === todayStr);
-  const done = all.filter((t) => t.done).length;
-  return { done, total: all.length, open: todayTodos(now).length };
+  const today = todayKey(now);
+  const open = todayTodos(now).length;
+  // 已完成的只算今天排期或今天到期的，昨天以前做完的不该压低今天的完成度
+  const done = (store.getData().todos || [])
+    .filter((t) => t.done && (dayKey(t.due) === today || dayKey(t.planAt) === today)).length;
+  return { done, total: open + done, open };
 }

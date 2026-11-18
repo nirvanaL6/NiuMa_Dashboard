@@ -23,6 +23,7 @@ const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const app = $('#app');
 const railNav = $('#railNav');
 const subNav = $('#segNav');
+const navRow = $('.navrow');
 let segThumb = $('.seg-nav__thumb', subNav);
 const stage = $('#stage');
 const toasts = $('#toasts');
@@ -57,6 +58,17 @@ function renderPanel() {
   $('#panelDesc').textContent = m.desc;
 
 const escHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  // 单视图模块（如总览）没有「切哪个视图」这回事：整条导航收起，
+  // 连按钮也不渲染，避免留一个点不动又指着自己的「速览」
+  const oneView = m.views.length < 2;
+  navRow.hidden = oneView;
+  subNav.setAttribute('aria-hidden', String(oneView));
+  if (oneView) {
+    subNav.innerHTML = '';
+    segThumb = null;
+    return;
+  }
 
   // 分段控件：按钮按内容宽度排布（见 styles.css），长标签不再被压成「项目&…」
   subNav.innerHTML = `<span class="seg-nav__thumb" aria-hidden="true"></span>${m.views.map((v, i) => `
@@ -637,10 +649,10 @@ sheetBody.addEventListener('click', (e) => {
 /* ---------------- 搜索（⌘K，全局存在） ---------------- */
 const searchInput = $('#globalSearch');
 const INDEX = [
-  ...['今日速览', '本周节奏'].map((t) => ({ t, k: '总览', go: ['overview', 'today'] })),
-  { t: '提交 Q4 需求评审材料', k: '待办', go: ['todo', 'mine'] },
+  ...['总览 速览', '北京时间'].map((t) => ({ t, k: '总览', go: ['overview', 'today'] })),
+  { t: '提交 Q4 需求评审材料', k: '待办', go: ['todo', 'list'] },
   { t: '四象限排优先级', k: '待办', go: ['todo', 'quadrant'] },
-  { t: 'AI 工具接管重复汇报', k: '资讯', go: ['news', 'feed'] },
+  { t: 'AI 工具接管重复汇报', k: '资讯', go: ['news', 'realtime'] },
   { t: '外卖券：饿了么 ¥12', k: '外卖', go: ['food', 'coupons'] },
   { t: '三平台比价', k: '外卖', go: ['food', 'compare'] },
   { t: '实时读秒计薪', k: '计薪', go: ['salary', 'live'] },
