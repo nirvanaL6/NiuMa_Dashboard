@@ -13,6 +13,7 @@ import { authApi, stateApi, getToken, setToken, ApiError } from './api.js';
 import { mountAuth, refreshAccountUI, openAuth, closeAuth, currentUser as authUser, bootstrapSession, logout, setUser } from './auth.js';
 import { mountTodo, bindTodoEvents } from './todo-app.js';
 import { mountNews, bindNewsEvents, loadNewsView } from './news-app.js';
+import { mountOverview, bindOverviewEvents, onOverviewMounted, resetOverviewUi } from './overview-app.js';
 import { confirmDialog } from './dialog.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -203,6 +204,8 @@ function go(moduleId, viewId, opts = {}) {
 
   state.moduleId = moduleId;
   state.viewId = viewId;
+  // 离开总览就把勾选面板收起来，下次进来是干净状态
+  if (!(moduleId === 'overview' && viewId === 'today')) resetOverviewUi();
   renderRail();
   renderPanel();
   renderStage(dir);
@@ -249,11 +252,8 @@ document.addEventListener('click', (e) => {
 
 /* ---------------- 视图挂载后的行为 ---------------- */
 function onViewMounted(root) {
-  // 今日速览：初始化倒计时与读秒
-  if (root.dataset.viewKey === 'overview:today') {
-    startOffworkCountdown(root);
-    startSalaryTicker(root);
-  }
+  // 总览：时钟 + 资讯速览 + 待办勾选（待办走 todo-app 的 data-toggle-todo 协议）
+  if (root.dataset.viewKey === 'overview:today') onOverviewMounted(root);
   if (root.dataset.viewKey === 'salary:live') {
     startSalaryClock(root, 'full');
   }
@@ -455,39 +455,6 @@ function pausePay(next) {
 
 const fmt = (n, d = 2) => n.toLocaleString('zh-CN', { minimumFractionDigits: d, maximumFractionDigits: d });
 const pad2 = (n) => String(Math.floor(n)).padStart(2, '0');
-
-/** 总览页的小型读秒 + 下班倒计时 */
-function startSalaryTicker(root) {
-  registerTicker(root, (v) => {
-    const el = root.querySelector('[data-live="salary-mini"]');
-    if (el) el.textContent = fmt(v);
-  });
-}
-
-
-
-/* ---------------- 下班倒计时（单一 requestAnimationFrame 统一驱动） ---------------- */
-function startOffworkCountdown(root) {
-  registerTicker(root, (v) => {
-    void v;
-    const now = new Date();
-    const end = new Date(now);
-    end.setHours(RATE.endH, 0, 0, 0);
-    const diff = Math.max(0, Math.floor((end - now) / 1000));
-    const hh = Math.floor(diff / 3600);
-    const mm = Math.floor((diff % 3600) / 60);
-    const ss = diff % 60;
-    const a = root.querySelector('#offworkLeft');
-    if (a) a.textContent = hh > 0 ? `${hh} 小时 ${pad2(mm)} 分` : `${mm} 分 ${pad2(ss)} 秒`;
-    const set = (u, val) => {
-      const b = root.querySelector(`[data-cd="${u}"]`);
-      if (b) b.textContent = val;
-    };
-    set('时', pad2(hh));
-    set('分', pad2(mm));
-    set('秒', pad2(ss));
-  });
-}
 
 /** 读秒页完整版：金额、工作进度条、等价换算 */
 function startSalaryClock(root) {
@@ -948,6 +915,16 @@ mountNews({
   go,
 });
 bindNewsEvents();
+
+/* ---- 总览模块：时钟 / 资讯速览 / 快捷入口 ---- */
+mountOverview({
+  onChange: () => {
+    renderStage('forward', false, { keepScroll: true });
+    refreshTodoBadge();
+  },
+  toast,
+});
+bindOverviewEvents();
 
 // 恢复登录态（token 有效则切到 cloud 模式并拉取云端快照）
 bootstrapSession().then(async (me) => {

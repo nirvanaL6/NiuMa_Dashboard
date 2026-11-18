@@ -42,6 +42,9 @@ with sync_playwright() as p:
     # 资讯已开发完成，不应再出现施工中占位
     pg.click('[data-module="news"]'); pg.wait_for_timeout(600)
     chk(pg.locator(".wip").count() == 0 and pg.locator(".board, .news-empty").count() > 0, "news 已脱离施工中")
+    # 总览已开发完成，应渲染四块等宽卡片
+    pg.click('[data-module="overview"]'); pg.wait_for_timeout(700)
+    chk(pg.locator(".wip").count() == 0 and pg.locator(".ov-card").count() == 4, "overview 已脱离施工中")
     pg.screenshot(path=f"{SHOT}-wip.png")
 
     # ---------- 1. 项目&待办 ----------

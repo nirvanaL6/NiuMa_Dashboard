@@ -8,14 +8,14 @@
 export const MODULES = [
   {
     id: 'overview',
-    wip: true,
     label: '总览',
     icon: 'overview',
     kicker: 'Overview',
-    title: '我的今日',
-    desc: '今天还剩多少能自由支配的时间',
+    title: '总览',
+    desc: '自定义总览页',
+    ready: true,
     views: [
-      { id: 'today', label: '今日速览', icon: 'overview', hint: '一屏看完待办、资讯、羊毛和到手工资' },
+      { id: 'today', label: '速览', icon: 'overview', hint: '北京时间、当日待办、资讯速览、快捷入口四块并列' },
       { id: 'progress', label: '本周节奏', icon: 'chart', hint: '周一到周五的专注时长与任务完成率' },
     ],
   },

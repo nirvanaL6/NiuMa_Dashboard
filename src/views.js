@@ -4,10 +4,11 @@
  */
 import { icon } from './icons.js';
 import { MODULES } from './config.js';
-import { SCHEDULE, WEEK, NEWS, COUPONS, PRICE_COMPARE } from './data.js';
+import { WEEK, COUPONS, PRICE_COMPARE } from './data.js';
 import { getData } from './store.js';
 import { viewTodoList, viewTodoQuadrant, viewTodoOverview } from './todo-views.js';
 import { viewNewsRealtime, viewNewsTopics, viewNewsLater, viewNewsFav } from './news-views.js';
+import { viewOverviewHome } from './overview-views.js';
 import { QUADRANTS, quadOf, fmtDue } from './todo-model.js';
 import { renderSelectField, renderTimeField } from './form-controls.js';
 
@@ -27,23 +28,6 @@ function spark(points, color = 'var(--primary)') {
   return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
     <path class="line" d="${d}" stroke="${color}" />
   </svg>`;
-}
-
-/* 总览里的迷你待办条目：只读展示，数据取自待办模块的新模型 */
-function miniTodoItem(t) {
-  const q = QUADRANTS.find((x) => x.id === quadOf(t.tags));
-  const p = (getData().projects || []).find((x) => x.id === t.projectId);
-  return `<li class="todo ${t.done ? 'done' : ''}" data-id="${t.id}" tabindex="0" role="checkbox" aria-checked="${t.done}" aria-label="${t.title}">
-    <span class="check" aria-hidden="true">${icon('check', 12, 2.4)}</span>
-    <span class="txt">
-      <span class="t">${t.title}</span>
-      <span class="m">
-        ${q ? `<span class="prio" style="--c:${q.accent}"><i style="background:${q.accent}"></i>${q.label}</span>` : ''}
-        ${p ? `<span class="dot-line"></span><span>${p.title}</span>` : ''}
-        ${t.due ? `<span class="dot-line"></span><span>${fmtDue(t.due)}</span>` : ''}
-      </span>
-    </span>
-  </li>`;
 }
 
 /* =========================================================
@@ -69,90 +53,10 @@ function stateBlock({ kind = 'empty', title, desc, action = '' }) {
 /* =========================================================
    总览
    ========================================================= */
+/* 四块等宽卡片的实现在 overview-views.js，这里只做转发，
+   避免总览越长越把这个文件撑得没法读 */
 function viewOverview() {
-  const total = todos().length, done = todos().filter((t) => t.done).length;
-  const pct = Math.round((done / total) * 100);
-  const r = 56, c = 2 * Math.PI * r;
-  const openP0 = todos().filter((t) => !t.done && (t.tags || []).includes('q1')).length;
-
-  return `
-  <div class="hero">
-    <div>
-      <div class="greet">Today's focus</div>
-      <h2>今天有 <em>${openP0} 件</em>必须先交付的事，先把 10:30 的需求评审扛过去。</h2>
-      <p>今日 8 小时里有 3 小时被会议占住，建议把「写周报」挪到 16:00 后的空档。</p>
-      <div class="tag-row" style="margin-top:14px">
-        <span class="chip chip--live">${icon('clock', 12)} 评审 22 分钟后开始</span>
-        <span class="chip">${icon('food', 12)} 饿了么 ¥12 券 · 剩 2 小时</span>
-        <span class="chip">${icon('wallet', 12)} 今日已到手 ¥<span data-live="salary-mini">0.00</span></span>
-        <span class="chip">${icon('clock', 12)} 距离下班 <b id="offworkLeft" style="font-weight:750">—</b></span>
-      </div>
-    </div>
-    <div class="hero__ring" role="img" aria-label="今日任务完成度 ${pct}%">
-      <svg width="132" height="132" viewBox="0 0 132 132">
-        <defs>
-          <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stop-color="#6366f1"/><stop offset="60%" stop-color="#8b5cf6"/><stop offset="100%" stop-color="#22d3ee"/>
-          </linearGradient>
-        </defs>
-        <circle cx="66" cy="66" r="${r}" fill="none" stroke="rgba(163,177,198,.35)" stroke-width="10"/>
-        <circle cx="66" cy="66" r="${r}" fill="none" stroke="url(#ringGrad)" stroke-width="10" stroke-linecap="round"
-          stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - pct / 100)}" style="transition:stroke-dashoffset .6s var(--ease-out)"/>
-      </svg>
-      <div class="txt"><b>${done}/${total}</b><span>今日完成</span></div>
-    </div>
-  </div>
-
-  <div class="grid grid--12">
-    <div class="col-8 card">
-      <div class="card-head"><h3 class="card-title">今天的时间块</h3><span class="card-sub">5 个日程 · 3h 05m</span></div>
-      <div class="timeline">
-        ${SCHEDULE.map((s) => `<div class="tl-item" data-state="${s.state}">
-          <div class="time">${s.time}</div>
-          <div class="rail-dot"><i></i></div>
-          <div class="body">${s.title}<span>${s.note}</span></div>
-        </div>`).join('')}
-      </div>
-    </div>
-
-    <div class="col-4" style="display:flex;flex-direction:column;gap:14px">
-      <div class="card">
-        <div class="card-head"><h3 class="card-title">距离下班</h3><span class="chip">18:00</span></div>
-        <div class="countdown" id="countdown">
-          ${['时', '分', '秒'].map((u) => `<div class="u"><b data-cd="${u}">--</b><span>${u}</span></div>`).join('')}
-        </div>
-        <p class="card-sub" style="margin-top:10px">按 09:30–18:00 计算，含 1 小时午休</p>
-      </div>
-
-      <div class="card">
-        <div class="card-head"><h3 class="card-title">今日待办</h3><a href="#" class="card-sub" data-jump="todo">全部 ${todos().filter((t) => !t.done).length} 件</a></div>
-        <div class="todo-list" id="todoMini">
-          ${todos().filter((t) => !t.done).slice(0, 3).map(miniTodoItem).join('')}
-        </div>
-      </div>
-    </div>
-
-    <div class="col-4 card">
-      <div class="card-head"><h3 class="card-title">资讯速读</h3><a href="#" class="card-sub" data-jump="news">更多</a></div>
-      <div class="mini-list">
-        ${NEWS.slice(0, 3).map((n) => `<li><span class="heat" style="width:22px;height:22px;border-radius:7px;display:grid;place-items:center;font-size:10px;font-weight:800;box-shadow:var(--sh-in-sm)">${n.hot}</span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${n.title}</span></li>`).join('')}
-      </div>
-    </div>
-
-    <div class="col-4 card">
-      <div class="card-head"><h3 class="card-title">今日可领</h3><a href="#" class="card-sub" data-jump="food">去领券</a></div>
-      <div class="mini-list">
-        ${coupons().filter((x) => !x.claimed).slice(0, 3).map((c) => `<li><span style="width:22px;height:22px;border-radius:7px;display:grid;place-items:center;color:#fff;font-size:10px;font-weight:800;background:${c.accent}">${c.short}</span><span>${c.brand} ¥${c.amount}</span><span class="when">${c.expire}</span></li>`).join('')}
-      </div>
-    </div>
-
-    <div class="col-4 card">
-      <div class="card-head"><h3 class="card-title">本周节奏</h3><span class="card-sub">完成率</span></div>
-      <div class="settee">
-        ${WEEK.map((w) => `<div class="settee__row"><span class="nm">${w.d}</span><span class="meter"><i style="--v:${w.load}%"></i></span><span class="val">${w.done} 件</span></div>`).join('')}
-      </div>
-    </div>
-  </div>`;
+  return viewOverviewHome();
 }
 
 function viewProgress() {
@@ -482,7 +386,6 @@ const VIEWS = {
 };
 
 /* ---- 用户数据 getter：每次渲染都读最新存储，保证两种模式一致 ---- */
-const todos = () => getData().todos || [];
 const coupons = () => {
   const claims = getData().claims || {};
   return COUPONS.map((c) => ({
